@@ -12,13 +12,6 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    proxy: {
-      '/api/supabase-mgmt': {
-        target: 'https://api.supabase.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/supabase-mgmt/, ''),
-      },
-    },
   },
   build: {
     outDir: 'dist',

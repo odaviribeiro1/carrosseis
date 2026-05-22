@@ -24,10 +24,6 @@
   ],
   "rewrites": [
     {
-      "source": "/api/supabase-mgmt/:path*",
-      "destination": "https://api.supabase.com/:path*"
-    },
-    {
       "source": "/((?!assets/|api/).*)",
       "destination": "/index.html"
     }

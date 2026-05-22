@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { build } from 'esbuild';
 import { randomBytes } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     await checkpoint(projectRef, body.supabase_pat, 'edge_functions_secrets_set', {});
 
-    const edgeFunctions = listEdgeFunctions();
+    const edgeFunctions = await listEdgeFunctions();
     for (const fn of edgeFunctions) {
       const step = `edge_function:${fn.slug}`;
       if (await hasCheckpoint(projectRef, body.supabase_pat, step)) continue;
@@ -157,19 +158,38 @@ async function listCheckpoints(ref: string, pat: string): Promise<string[]> {
   return [...text.matchAll(/"step"\s*:\s*"([^"]+)"/g)].map((match) => match[1] ?? '');
 }
 
-function listEdgeFunctions(): Array<{ slug: string; body: string }> {
+async function listEdgeFunctions(): Promise<Array<{ slug: string; body: string }>> {
   const functionsDir = join(ROOT, 'supabase', 'functions');
-  return readdirSync(functionsDir)
+  const slugs = readdirSync(functionsDir)
     .filter((entry) => entry !== '_shared' && statSync(join(functionsDir, entry)).isDirectory())
-    .map((slug) => ({ slug, body: readFunctionBody(join(functionsDir, slug)) }));
+    .sort();
+
+  return Promise.all(
+    slugs.map(async (slug) => ({
+      slug,
+      body: await bundleEdgeFunction(join(functionsDir, slug, 'index.ts')),
+    })),
+  );
 }
 
-function readFunctionBody(dir: string): string {
-  return readdirSync(dir)
-    .filter((file) => file.endsWith('.ts'))
-    .sort()
-    .map((file) => readFileSync(join(dir, file), 'utf8'))
-    .join('\n');
+async function bundleEdgeFunction(entryPoint: string): Promise<string> {
+  const result = await build({
+    entryPoints: [entryPoint],
+    bundle: true,
+    write: false,
+    format: 'esm',
+    platform: 'neutral',
+    target: 'es2022',
+    legalComments: 'none',
+    external: ['http://*', 'https://*'],
+    logLevel: 'silent',
+  });
+
+  const bundled = result.outputFiles[0]?.text;
+  if (!bundled) {
+    throw new Error(`Falha ao empacotar Edge Function: ${entryPoint}`);
+  }
+  return bundled;
 }
 
 async function deployEdgeSecrets(ref: string, pat: string, secrets: Record<string, string>) {
