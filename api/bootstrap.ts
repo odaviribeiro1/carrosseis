@@ -63,7 +63,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       email: body.owner_email,
     });
 
-    const vercel = await configureVercel(body.vercel_token, {
+    const vercelProjectId = process.env.VERCEL_PROJECT_ID;
+    if (!vercelProjectId) {
+      throw new Error('VERCEL_PROJECT_ID ausente — defina a env do projeto na Vercel para o setup automatico.');
+    }
+
+    await setVercelEnvs(body.vercel_token, vercelProjectId, {
       SUPABASE_URL: body.supabase_url,
       SUPABASE_ANON_KEY: body.supabase_anon_key,
       SUPABASE_SERVICE_ROLE_KEY: body.supabase_service_role_key,
@@ -72,18 +77,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       CRYPTO_KEY: cryptoKey,
     });
     await checkpoint(projectRef, body.supabase_pat, 'vercel_envs_set', {});
-    if (vercel.deployment_id) {
-      await checkpoint(projectRef, body.supabase_pat, 'redeploy_triggered', {
-        id: vercel.deployment_id,
-        url: vercel.deployment_url,
-      });
-    }
+
+    // As envs setadas via /env nao ficam ativas no deployment atual — dispara um redeploy.
+    const deployment = await triggerVercelRedeploy(body.vercel_token, vercelProjectId, projectRef, body.supabase_pat);
 
     return res.status(200).json({
       success: true,
       steps_completed: await listCheckpoints(projectRef, body.supabase_pat),
-      deployment_id: vercel.deployment_id,
-      deployment_url: vercel.deployment_url,
+      deployment_id: deployment.deployment_id,
+      deployment_url: deployment.deployment_url,
       owner_user_id: ownerUserId,
     });
   } catch (err) {
@@ -222,12 +224,7 @@ async function ensureOwner(body: BootstrapBody): Promise<string> {
   return user.id;
 }
 
-async function configureVercel(token: string, envs: Record<string, string>) {
-  const projectId = process.env.VERCEL_PROJECT_ID;
-  if (!projectId) {
-    return { deployment_id: '', deployment_url: '' };
-  }
-
+async function setVercelEnvs(token: string, projectId: string, envs: Record<string, string>) {
   for (const [key, value] of Object.entries(envs)) {
     const res = await fetch(`https://api.vercel.com/v10/projects/${projectId}/env?upsert=true`, {
       method: 'POST',
@@ -236,6 +233,68 @@ async function configureVercel(token: string, envs: Record<string, string>) {
     });
     if (!res.ok) throw new Error(`Falha ao configurar env ${key} na Vercel: ${await res.text()}`);
   }
+}
 
-  return { deployment_id: '', deployment_url: '' };
+type DeploymentRef = { deployment_id: string; deployment_url: string };
+
+async function triggerVercelRedeploy(
+  token: string,
+  projectId: string,
+  ref: string,
+  pat: string,
+): Promise<DeploymentRef> {
+  // Idempotencia: se um redeploy ja foi disparado, reaproveita o checkpoint (nao dispara de novo).
+  if (await hasCheckpoint(ref, pat, 'redeploy_triggered')) {
+    return readRedeployCheckpoint(ref, pat);
+  }
+
+  // 1. Deployment de producao atual como base do redeploy.
+  const projectRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!projectRes.ok) throw new Error(`Falha ao consultar projeto Vercel: ${await projectRes.text()}`);
+  const projectData = await projectRes.json();
+  const baseDeploymentId = projectData?.targets?.production?.id ?? projectData?.latestDeployments?.[0]?.uid;
+  if (!baseDeploymentId) {
+    throw new Error('Projeto Vercel sem deployment anterior — nao ha base para redeploy.');
+  }
+
+  // 2. Disparar redeploy: novo deployment de producao, herdando refs Git + as envs novas.
+  const redeployRes = await fetch('https://api.vercel.com/v13/deployments?forceNew=1', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: projectData.name,
+      deploymentId: baseDeploymentId,
+      target: 'production',
+      meta: { source: 'agentise-setup-wizard', reason: 'apply-envs' },
+    }),
+  });
+  if (!redeployRes.ok) throw new Error(`Falha ao disparar redeploy: ${await redeployRes.text()}`);
+  const redeployData = await redeployRes.json();
+  const deployment: DeploymentRef = {
+    deployment_id: redeployData.id ?? redeployData.uid ?? '',
+    deployment_url: redeployData.url ?? '',
+  };
+
+  // 3. Checkpoint para idempotencia e para o frontend acompanhar o polling.
+  await checkpoint(ref, pat, 'redeploy_triggered', {
+    deployment_id: deployment.deployment_id,
+    deployment_url: deployment.deployment_url,
+    triggered_at: new Date().toISOString(),
+  });
+  return deployment;
+}
+
+async function readRedeployCheckpoint(ref: string, pat: string): Promise<DeploymentRef> {
+  const result = await runSql(
+    "SELECT metadata FROM public._bootstrap_state WHERE step = 'redeploy_triggered'",
+    ref,
+    pat,
+  );
+  const text = JSON.stringify(result);
+  return {
+    deployment_id: text.match(/"deployment_id"\s*:\s*"([^"]*)"/)?.[1] ?? '',
+    deployment_url: text.match(/"deployment_url"\s*:\s*"([^"]*)"/)?.[1] ?? '',
+  };
 }

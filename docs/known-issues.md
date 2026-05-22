@@ -5,12 +5,22 @@ corrigidos no contexto onde foram detectados — cada um tem um caminho de corre
 
 ---
 
-## KI-001 — Bootstrap não dispara redeploy na Vercel (envs core só ativam no próximo deploy)
+## KI-001 — Bootstrap não dispara redeploy na Vercel ✅ RESOLVIDO (Prompt 6)
 
-- **Severidade:** 🟡 Alta (bloqueia o caminho feliz do wizard no primeiro run)
+- **Severidade:** 🟡 Alta (bloqueava o caminho feliz do wizard no primeiro run)
 - **Origem:** pré-existente (introduzido no Prompt 2)
-- **Correção planejada:** **Prompt 6** (não corrigir antes disso)
+- **Status:** ✅ **Resolvido no Prompt 6.**
 - **Detectado em:** auditoria do Prompt 3; reconfirmado no Prompt 4
+
+> **Resolução (Prompt 6):** `api/bootstrap.ts` agora dispara o redeploy após o upsert das
+> envs — `triggerVercelRedeploy` faz `POST /v13/deployments?forceNew=1` a partir do
+> deployment de produção atual, captura `deployment_id`/`deployment_url`, grava o checkpoint
+> `redeploy_triggered` (com guard de idempotência via `hasCheckpoint`) e os retorna no
+> response. Novo `api/deployment-status.ts` proxia o status server-side (token via POST body,
+> nunca logado). O Step 3 do wizard (`SetupPage.tsx`) substituiu o timeout decorativo de 800ms
+> por polling real (backoff 3s, timeout 5min) e só avança ao Step 4 com `readyState === 'READY'`;
+> em timeout mostra link pro painel da Vercel. Também tornei `VERCEL_PROJECT_ID` ausente um
+> erro explícito (antes era early-return silencioso). O texto abaixo fica como registro do bug original.
 
 ### Localização
 
@@ -71,6 +81,7 @@ Após o bootstrap, fazer um **redeploy manual** na Vercel (ou um novo push). Dep
 
 - **Severidade:** 🔴 Bloqueador de distribuição
 - **Origem:** pré-existente (Prompt 2) · **Detectado em:** auditoria do Prompt 3 (item B.5)
+- **Status:** 🔴 Aberto — fora do escopo do Prompt 6, próxima rodada.
 - **Arquivo:** `apps/web/vercel.json` (bloco `rewrites`, ~L25-29)
 
 **Atual:** rewrite `"/api/supabase-mgmt/:path*"` → `"https://api.supabase.com/:path*"`. É um
@@ -88,6 +99,7 @@ credenciais da instância (não injeta token).
 
 - **Severidade:** 🔴 Bloqueador de distribuição (quebra todas as EFs em runtime)
 - **Origem:** pré-existente (Prompt 2) · **Detectado em:** auditoria do Prompt 3 (achado crítico #2)
+- **Status:** 🔴 Aberto — fora do escopo do Prompt 6, próxima rodada.
 - **Arquivo/função:** `api/bootstrap.ts` → `readFunctionBody` (~L165-171) e `listEdgeFunctions` (~L158-163)
 
 **Atual:** lê apenas os `.ts` do nível raiz de cada função (`index.ts`); ignora

@@ -60,6 +60,28 @@ async function validateTokenViaProxy(
   }
 }
 
+// KI-001: acompanha o redeploy via proxy server-side. Resolve true quando READY,
+// false em timeout (5 min) ou estado de falha. Backoff de 3s entre tentativas.
+async function waitForDeployment(deploymentId: string, vercelToken: string): Promise<boolean> {
+  const deadline = Date.now() + 5 * 60 * 1000;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch('/api/deployment-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deployment_id: deploymentId, vercel_token: vercelToken }),
+      });
+      const data = await res.json();
+      if (data.state === 'READY') return true;
+      if (data.state === 'ERROR' || data.state === 'CANCELED') return false;
+    } catch {
+      // transitorio — continua tentando ate o deadline
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+  return false;
+}
+
 export function SetupPage() {
   const [step, setStep] = useState(() => Number(new URLSearchParams(location.search).get('step') ?? '1'));
   const [coreValues, setCoreValues] = useState<CoreValues>(emptyCoreValues);
@@ -150,6 +172,21 @@ export function SetupPage() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message ?? 'Bootstrap falhou');
+
+      // Passos concluidos ate o disparo do redeploy.
+      setBootstrapState(BOOTSTRAP_STEPS.slice(0, 6));
+
+      // KI-001: esperar o redeploy ficar READY antes do Step 4 — so assim as envs core ficam
+      // ativas nas API Routes (/api/credentials etc.). Sem isso o Step 4 renderiza cedo demais
+      // e o save quebra com 500.
+      const deploymentId = typeof data.deployment_id === 'string' ? data.deployment_id : '';
+      if (deploymentId) {
+        const ready = await waitForDeployment(deploymentId, coreValues.vercel_token);
+        if (!ready) {
+          setBootstrapError('O redeploy esta demorando mais que o esperado. Acompanhe no painel da Vercel e tente de novo.');
+          return;
+        }
+      }
       setBootstrapState(BOOTSTRAP_STEPS);
 
       // Correcao 1.4: login automatico do owner usando os valores core ja em memoria.
@@ -166,7 +203,7 @@ export function SetupPage() {
         setOwnerAccessToken(signIn.session.access_token);
         // Limpar a senha da memoria React imediatamente apos o login.
         setCoreValues((current) => ({ ...current, owner_password: '' }));
-        window.setTimeout(() => setStep(4), 800);
+        window.setTimeout(() => setStep(4), 400);
       } catch {
         setLoginWarning(
           'Bootstrap concluido, mas nao foi possivel autenticar automaticamente. ' +
@@ -488,7 +525,19 @@ function BootstrapStep({ state, error, warning, onRetry }: { state: string[]; er
           <a href="/login" className="font-medium underline">Ir para login</a>
         </div>
       )}
-      {error && <p className="mt-4 text-sm text-[#EF4444]">{error}</p>}
+      {error && (
+        <div className="mt-4 text-sm text-[#EF4444]">
+          <p>{error}</p>
+          <a
+            href="https://vercel.com/dashboard"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-block font-medium text-[#FCA5A5] underline"
+          >
+            Abrir painel da Vercel
+          </a>
+        </div>
+      )}
       {error && <div className="mt-6 flex justify-end"><PrimaryButton onClick={onRetry}>Tentar de novo</PrimaryButton></div>}
     </>
   );
