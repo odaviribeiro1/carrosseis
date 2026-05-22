@@ -1,0 +1,23 @@
+{
+  "name": "content-hub",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @content-hub/web dev",
+    "build": "pnpm --filter @content-hub/web build",
+    "lint": "pnpm --filter @content-hub/web lint",
+    "preview": "pnpm --filter @content-hub/web preview",
+    "db:push": "supabase db push",
+    "functions:deploy": "node packages/shared/bin/deploy-functions.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.47.0",
+    "@vercel/node": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

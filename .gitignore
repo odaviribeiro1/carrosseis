@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+.env.supabase
+apps/web/.env
+apps/web/.env.local
+apps/web/.env.*.local
+*.env
+# Mantém apenas os templates
+!.env.example
+!apps/web/.env.example
+
+# Credenciais e secrets diversos
+*.pem
+*.key
+secrets.json
+credentials.json
+config.local.json
+
+# Arquivo local de rotação de credenciais — não commitar
+ROTATION_CHECKLIST.md
+
+# Supabase local
+**/supabase/.branches/
+**/supabase/.temp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Temp
+*.tmp
+*.temp
+.cache/
+
+# Vercel
+.vercel/
+
+# TypeScript
+*.tsbuildinfo
+
+# Vite config artifacts (tsc -b emite declarations; nunca commitar o .js compilado)
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
