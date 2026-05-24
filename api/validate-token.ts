@@ -45,16 +45,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!valid) message = 'URL do Supabase invalida';
         break;
 
-      case 'supabase_anon_key':
+      case 'supabase_anon_key': {
+        if (!supabase_url || !SUPABASE_URL_RE.test(supabase_url)) {
+          return res.status(400).json({ valid: false, message: 'URL Supabase valida necessaria' });
+        }
+        // O root /rest/v1/ passou a exigir service_role (introspecao OpenAPI), entao
+        // a anon key e rejeitada la. Validamos via GoTrue: /auth/v1/settings aceita a
+        // anon key e devolve 401 para chave invalida.
+        const r = await fetch(`${supabase_url}/auth/v1/settings`, {
+          headers: { apikey: value },
+        });
+        valid = r.ok;
+        if (!valid) message = 'Chave anon Supabase invalida ou sem permissao';
+        break;
+      }
+
       case 'supabase_service_role_key': {
         if (!supabase_url || !SUPABASE_URL_RE.test(supabase_url)) {
           return res.status(400).json({ valid: false, message: 'URL Supabase valida necessaria' });
         }
+        // O root /rest/v1/ so aceita service_role — valida a chave E confirma que e
+        // service_role (uma anon key paga 401 aqui, pegando troca de campo).
         const r = await fetch(`${supabase_url}/rest/v1/`, {
           headers: { apikey: value, Authorization: `Bearer ${value}` },
         });
         valid = r.ok;
-        if (!valid) message = 'Chave Supabase invalida ou sem permissao';
+        if (!valid) message = 'Chave service_role Supabase invalida ou sem permissao';
         break;
       }
 
