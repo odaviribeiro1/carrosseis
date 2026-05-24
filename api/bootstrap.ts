@@ -204,17 +204,23 @@ async function deployEdgeSecrets(ref: string, pat: string, secrets: Record<strin
 }
 
 async function upsertEdgeFunction(ref: string, pat: string, slug: string, body: string) {
-  const getRes = await fetch(`https://api.supabase.com/v1/projects/${ref}/functions/${slug}`, {
+  // Fix 5: deploy via multipart no endpoint atual POST /functions/deploy?slug= (upsert por slug).
+  // O metodo antigo (POST/PATCH em /functions com body JSON cru) foi descontinuado e levava a
+  // "Failed to send a request to the Edge Function". Nao setar Content-Type manualmente — o
+  // fetch injeta o boundary do multipart sozinho.
+  const form = new FormData();
+  form.append(
+    'metadata',
+    new Blob([JSON.stringify({ name: slug, entrypoint_path: 'index.ts', verify_jwt: true })], {
+      type: 'application/json',
+    }),
+  );
+  form.append('file', new Blob([body], { type: 'application/typescript' }), 'index.ts');
+
+  const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/functions/deploy?slug=${slug}`, {
+    method: 'POST',
     headers: { Authorization: `Bearer ${pat}` },
-  });
-  const method = getRes.status === 404 ? 'POST' : 'PATCH';
-  const url = method === 'POST'
-    ? `https://api.supabase.com/v1/projects/${ref}/functions`
-    : `https://api.supabase.com/v1/projects/${ref}/functions/${slug}`;
-  const res = await fetch(url, {
-    method,
-    headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: slug, slug, body, verify_jwt: true }),
+    body: form,
   });
   if (!res.ok) throw new Error(`Falha ao publicar Edge Function ${slug}: ${await res.text()}`);
 }
