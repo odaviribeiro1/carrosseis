@@ -5,7 +5,7 @@
   "buildCommand": "pnpm --filter @content-hub/web build",
   "outputDirectory": "apps/web/dist",
   "functions": {
-    "api/bootstrap.ts": { "maxDuration": 60 }
+    "api/bootstrap.ts": { "maxDuration": 60, "includeFiles": "supabase/**" }
   },
   "headers": [
     {
