@@ -86,7 +86,6 @@ export function SetupPage() {
   const [step, setStep] = useState(() => Number(new URLSearchParams(location.search).get('step') ?? '1'));
   const [coreValues, setCoreValues] = useState<CoreValues>(emptyCoreValues);
   const [valid, setValid] = useState<Record<keyof CoreValues, boolean>>({} as Record<keyof CoreValues, boolean>);
-  const [hadSavedState, setHadSavedState] = useState(false);
   const [bootstrapState, setBootstrapState] = useState<string[]>([]);
   const [bootstrapError, setBootstrapError] = useState('');
   const [loginWarning, setLoginWarning] = useState('');
@@ -104,7 +103,6 @@ export function SetupPage() {
     if (saved) {
       // Campos sensiveis nunca vem do localStorage — comecam sempre vazios.
       setCoreValues((current) => ({ ...current, ...saved, owner_password: '' }));
-      setHadSavedState(true);
     }
   }, []);
 
@@ -256,7 +254,6 @@ export function SetupPage() {
               onValid={handleCoreValid}
               canSubmit={allCoreValid}
               onSubmit={runBootstrap}
-              hadSavedState={hadSavedState}
             />
           )}
           {step === 3 && <BootstrapStep state={bootstrapState} error={bootstrapError} warning={loginWarning} onRetry={runBootstrap} />}
@@ -450,7 +447,6 @@ function CoreStep({
   onValid,
   canSubmit,
   onSubmit,
-  hadSavedState,
 }: {
   values: CoreValues;
   onChange: (key: keyof CoreValues, value: string) => void;
@@ -458,7 +454,6 @@ function CoreStep({
   onValid: (key: keyof CoreValues, ok: boolean) => void;
   canSubmit: boolean;
   onSubmit: () => void;
-  hadSavedState: boolean;
 }) {
   const fields: Array<[keyof CoreValues, string, string, string, boolean]> = [
     ['supabase_url', 'Supabase URL', 'https://xxxx.supabase.co', 'Cole a Project URL do Supabase.', false],
@@ -475,11 +470,6 @@ function CoreStep({
       <p className="mb-8 text-base leading-[1.6] text-[#94A3B8]">
         Estes dados conectam sua instancia ao Supabase e Vercel. Tokens de bootstrap sao descartados apos o uso.
       </p>
-      {hadSavedState && (
-        <div className="mb-6 rounded-xl border border-[rgba(59,130,246,0.2)] bg-[rgba(59,130,246,0.06)] p-4 text-[13px] leading-5 text-[#CBD5E1]">
-          Suas credenciais sensiveis (senha do owner e tokens) precisam ser digitadas novamente por seguranca.
-        </div>
-      )}
       <div className="grid gap-4">
         {fields.map(([key, label, placeholder, help, isPassword]) => (
           <CoreField
