@@ -40,11 +40,24 @@ export function CredentialField({
 
     const timeout = window.setTimeout(() => {
       setStatus('validating');
-      field.validate(value).then((result) => {
-        setStatus(result.ok ? 'valid' : 'invalid');
-        setMessage(result.message ?? '');
-        onValidationChange?.(field.key, result.ok);
-      });
+      // Valida via proxy server-side: a chave nunca vai do browser direto pro provedor
+      // (sem CORS com Anthropic/Groq/Resend, sem exposicao no Network tab).
+      fetch('/api/validate-credential', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: field.key, value }),
+      })
+        .then((res) => res.json())
+        .then((result: { valid?: boolean; message?: string }) => {
+          setStatus(result.valid ? 'valid' : 'invalid');
+          setMessage(result.message ?? '');
+          onValidationChange?.(field.key, Boolean(result.valid));
+        })
+        .catch(() => {
+          setStatus('invalid');
+          setMessage('Servico de validacao indisponivel, tente novamente.');
+          onValidationChange?.(field.key, false);
+        });
     }, 800);
 
     return () => window.clearTimeout(timeout);
