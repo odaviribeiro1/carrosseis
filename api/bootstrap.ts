@@ -42,9 +42,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await checkpoint(projectRef, body.supabase_pat, step, {});
     }
 
+    // SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY sao injetados
+    // automaticamente pelo runtime das Edge Functions — nao podem ser setados como secret
+    // (prefixo SUPABASE_ reservado). So setamos CRYPTO_KEY, usado por _shared/credentials.ts
+    // para decifrar as credenciais do app (app_settings).
     await deployEdgeSecrets(projectRef, body.supabase_pat, {
-      SUPABASE_URL: body.supabase_url,
-      SUPABASE_SERVICE_ROLE_KEY: body.supabase_service_role_key,
       CRYPTO_KEY: cryptoKey,
     });
     await checkpoint(projectRef, body.supabase_pat, 'edge_functions_secrets_set', {});
@@ -195,10 +197,17 @@ async function bundleEdgeFunction(entryPoint: string): Promise<string> {
 }
 
 async function deployEdgeSecrets(ref: string, pat: string, secrets: Record<string, string>) {
+  // O prefixo SUPABASE_ e reservado (injetado pelo runtime) e a Management API rejeita.
+  // Filtramos por seguranca; sem secrets restantes, nao chamamos a API.
+  const payload = Object.entries(secrets)
+    .filter(([name]) => !name.startsWith('SUPABASE_'))
+    .map(([name, value]) => ({ name, value }));
+  if (payload.length === 0) return;
+
   const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/secrets`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(Object.entries(secrets).map(([name, value]) => ({ name, value }))),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Falha ao configurar secrets das Edge Functions: ${await res.text()}`);
 }
