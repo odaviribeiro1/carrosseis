@@ -51,8 +51,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const edgeFunctions = await listEdgeFunctions();
     for (const fn of edgeFunctions) {
+      // Fix 8: deploya SEMPRE (upsert idempotente) — sem pular por checkpoint,
+      // senao mudancas no codigo de uma EF nunca sobem ao re-rodar o Step 3.
+      // O checkpoint segue sendo gravado, mas so como diagnostico.
       const step = `edge_function:${fn.slug}`;
-      if (await hasCheckpoint(projectRef, body.supabase_pat, step)) continue;
       await upsertEdgeFunction(projectRef, body.supabase_pat, fn.slug, fn.body);
       await checkpoint(projectRef, body.supabase_pat, step, {});
     }
