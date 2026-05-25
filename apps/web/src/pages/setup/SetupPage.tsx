@@ -116,7 +116,7 @@ export function SetupPage() {
   );
 
   const requiredAppFields = setupConfig.appCredentials.filter((field) =>
-    ['llm_provider', 'openai_api_key', 'google_api_key'].includes(field.key),
+    ['openai_api_key', 'google_api_key'].includes(field.key),
   );
   const allAppValid = requiredAppFields.every((field) => appValid[field.key]);
 
