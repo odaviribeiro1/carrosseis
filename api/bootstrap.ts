@@ -42,6 +42,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await checkpoint(projectRef, body.supabase_pat, step, {});
     }
 
+    // content_hub e criado nas migrations, mas o PostgREST so expoe os schemas configurados
+    // no projeto (default: public, graphql_public). Sem expor content_hub, toda query do app
+    // via .schema('content_hub') (e o requireOwner do Step 4) recebe 406 PGRST106.
+    await exposePostgrestSchema(projectRef, body.supabase_pat, 'content_hub');
+    await checkpoint(projectRef, body.supabase_pat, 'postgrest_schema_exposed', {});
+
     // SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY sao injetados
     // automaticamente pelo runtime das Edge Functions — nao podem ser setados como secret
     // (prefixo SUPABASE_ reservado). So setamos CRYPTO_KEY, usado por _shared/credentials.ts
@@ -63,6 +69,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await checkpoint(projectRef, body.supabase_pat, 'edge_functions_deployed', { count: edgeFunctions.length });
 
     const ownerUserId = await ensureOwner(body);
+    // Role atribuida via SQL direto (Management API), nao via PostgREST: o schema content_hub
+    // recem-exposto pode ainda nao ter recarregado no PostgREST (race de reload).
+    await assignOwnerRole(projectRef, body.supabase_pat, ownerUserId);
     await checkpoint(projectRef, body.supabase_pat, 'owner_created', {
       user_id: ownerUserId,
       email: body.owner_email,
@@ -253,12 +262,35 @@ async function ensureOwner(body: BootstrapBody): Promise<string> {
     user = created.data.user;
   }
 
-  const { error } = await admin
-    .schema('content_hub')
-    .from('user_roles')
-    .upsert({ user_id: user.id, role: 'owner' });
-  if (error) throw error;
   return user.id;
+}
+
+async function assignOwnerRole(ref: string, pat: string, userId: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) throw new Error('User id do owner invalido.');
+  await runSql(
+    `INSERT INTO content_hub.user_roles (user_id, role)
+     VALUES ('${userId}', 'owner')
+     ON CONFLICT (user_id) DO UPDATE SET role = 'owner'`,
+    ref,
+    pat,
+  );
+}
+
+async function exposePostgrestSchema(ref: string, pat: string, schema: string) {
+  const url = `https://api.supabase.com/v1/projects/${ref}/postgrest`;
+  const getRes = await fetch(url, { headers: { Authorization: `Bearer ${pat}` } });
+  if (!getRes.ok) throw new Error(`Falha ao ler config do PostgREST: ${await getRes.text()}`);
+  const config = await getRes.json().catch(() => ({}));
+  const current = typeof config.db_schema === 'string' ? config.db_schema : 'public, graphql_public';
+  const schemas = current.split(',').map((entry) => entry.trim()).filter(Boolean);
+  if (schemas.includes(schema)) return;
+
+  const patchRes = await fetch(url, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${pat}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ db_schema: [...schemas, schema].join(', ') }),
+  });
+  if (!patchRes.ok) throw new Error(`Falha ao expor schema ${schema} no PostgREST: ${await patchRes.text()}`);
 }
 
 async function setVercelEnvs(token: string, projectId: string, envs: Record<string, string>) {
