@@ -107,8 +107,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: false,
       step_failed: 'bootstrap',
       error_code: 'BOOTSTRAP_FAILED',
-      message: err instanceof Error ? err.message : 'Erro desconhecido no bootstrap.',
+      message: errorMessage(err),
     });
+  }
+}
+
+// Extrai mensagem util de qualquer throw — Error, PostgrestError-like ({ message }) ou objeto.
+// Sem isso, um throw nao-Error (ex.: PostgrestError do supabase-js) virava "Erro desconhecido".
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const m = (err as { message?: unknown }).message;
+    if (typeof m === 'string' && m) return m;
+  }
+  try {
+    return JSON.stringify(err) || 'Erro desconhecido no bootstrap.';
+  } catch {
+    return 'Erro desconhecido no bootstrap.';
   }
 }
 
