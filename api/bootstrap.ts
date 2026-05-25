@@ -57,16 +57,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     await checkpoint(projectRef, body.supabase_pat, 'edge_functions_secrets_set', {});
 
-    const edgeFunctions = await listEdgeFunctions();
-    for (const fn of edgeFunctions) {
-      // Fix 8: deploya SEMPRE (upsert idempotente) — sem pular por checkpoint,
-      // senao mudancas no codigo de uma EF nunca sobem ao re-rodar o Step 3.
-      // O checkpoint segue sendo gravado, mas so como diagnostico.
-      const step = `edge_function:${fn.slug}`;
-      await upsertEdgeFunction(projectRef, body.supabase_pat, fn.slug, fn.body);
+    // Deploy das Edge Functions, pulando as ja publicadas. Bundle (esbuild) + upload multipart
+    // das 5 EFs custa ~20s e estourava o timeout da function antes de chegar nas envs Vercel +
+    // redeploy. O bootstrap completa de forma incremental via re-runs idempotentes; o bundle e
+    // lazy (so a EF que realmente sobe). Pra forcar re-deploy de codigo novo de uma EF, limpe
+    // o checkpoint edge_function:<slug>.
+    const slugs = listEdgeFunctionSlugs();
+    for (const slug of slugs) {
+      const step = `edge_function:${slug}`;
+      if (await hasCheckpoint(projectRef, body.supabase_pat, step)) continue;
+      const fnBody = await bundleEdgeFunction(join(ROOT, 'supabase', 'functions', slug, 'index.ts'));
+      await upsertEdgeFunction(projectRef, body.supabase_pat, slug, fnBody);
       await checkpoint(projectRef, body.supabase_pat, step, {});
     }
-    await checkpoint(projectRef, body.supabase_pat, 'edge_functions_deployed', { count: edgeFunctions.length });
+    await checkpoint(projectRef, body.supabase_pat, 'edge_functions_deployed', { count: slugs.length });
 
     const ownerUserId = await ensureOwner(body);
     // Role atribuida via SQL direto (Management API), nao via PostgREST: o schema content_hub
@@ -186,18 +190,11 @@ async function listCheckpoints(ref: string, pat: string): Promise<string[]> {
   return [...text.matchAll(/"step"\s*:\s*"([^"]+)"/g)].map((match) => match[1] ?? '');
 }
 
-async function listEdgeFunctions(): Promise<Array<{ slug: string; body: string }>> {
+function listEdgeFunctionSlugs(): string[] {
   const functionsDir = join(ROOT, 'supabase', 'functions');
-  const slugs = readdirSync(functionsDir)
+  return readdirSync(functionsDir)
     .filter((entry) => entry !== '_shared' && statSync(join(functionsDir, entry)).isDirectory())
     .sort();
-
-  return Promise.all(
-    slugs.map(async (slug) => ({
-      slug,
-      body: await bundleEdgeFunction(join(functionsDir, slug, 'index.ts')),
-    })),
-  );
 }
 
 async function bundleEdgeFunction(entryPoint: string): Promise<string> {
