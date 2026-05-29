@@ -111,7 +111,7 @@ export function CredentialsSettingsPage() {
               <div className={setupConfig.appCredentials.length > 6 ? 'grid gap-4 lg:grid-cols-2' : 'space-y-4'}>
                 {setupConfig.appCredentials.map((field) => (
                   <CredentialField
-                    key={`${field.key}-${presence[field.key]?.exists ? 'set' : 'empty'}-${changed[field.key] ? 'changed' : 'idle'}`}
+                    key={field.key}
                     field={field}
                     initialHasValue={Boolean(presence[field.key]?.exists) && changed[field.key] === undefined}
                     onChange={handleChange}
