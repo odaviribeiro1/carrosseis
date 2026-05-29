@@ -6,6 +6,9 @@ import { CredentialField } from '@/components/credentials/CredentialField';
 import { isSupabaseConfigured, getSupabaseClient } from '@/lib/supabase';
 import { clearStep2, loadStep2, persistStep2 } from '@/lib/setup-persistence';
 
+const STEP_SESSION_KEY = 'agentise.setup.step';
+const TOKEN_SESSION_KEY = 'agentise.setup.owner_token';
+
 type CoreValues = {
   supabase_url: string;
   supabase_anon_key: string;
@@ -82,14 +85,44 @@ async function waitForDeployment(deploymentId: string, vercelToken: string): Pro
   return false;
 }
 
+function restoreSessionStep(): number {
+  try {
+    const saved = sessionStorage.getItem(STEP_SESSION_KEY);
+    if (saved) {
+      const n = Number(saved);
+      if (n >= 1 && n <= 4) return n;
+    }
+  } catch {}
+  return Number(new URLSearchParams(location.search).get('step') ?? '1');
+}
+
+function restoreSessionToken(): string | null {
+  try {
+    return sessionStorage.getItem(TOKEN_SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveSessionStep(step: number) {
+  try { sessionStorage.setItem(STEP_SESSION_KEY, String(step)); } catch {}
+}
+
+function saveSessionToken(token: string | null) {
+  try {
+    if (token) sessionStorage.setItem(TOKEN_SESSION_KEY, token);
+    else sessionStorage.removeItem(TOKEN_SESSION_KEY);
+  } catch {}
+}
+
 export function SetupPage() {
-  const [step, setStep] = useState(() => Number(new URLSearchParams(location.search).get('step') ?? '1'));
+  const [step, setStep] = useState(() => restoreSessionStep());
   const [coreValues, setCoreValues] = useState<CoreValues>(emptyCoreValues);
   const [valid, setValid] = useState<Record<keyof CoreValues, boolean>>({} as Record<keyof CoreValues, boolean>);
   const [bootstrapState, setBootstrapState] = useState<string[]>([]);
   const [bootstrapError, setBootstrapError] = useState('');
   const [loginWarning, setLoginWarning] = useState('');
-  const [ownerAccessToken, setOwnerAccessToken] = useState<string | null>(null);
+  const [ownerAccessToken, setOwnerAccessToken] = useState<string | null>(restoreSessionToken());
   const [appCredentials, setAppCredentials] = useState<Record<string, string>>({});
   const [appValid, setAppValid] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
@@ -97,6 +130,14 @@ export function SetupPage() {
   // Espelho dos valores atuais para o validador (identidade estavel, leitura sempre fresca).
   const coreValuesRef = useRef(coreValues);
   coreValuesRef.current = coreValues;
+
+  useEffect(() => {
+    saveSessionStep(step);
+  }, [step]);
+
+  useEffect(() => {
+    saveSessionToken(ownerAccessToken);
+  }, [ownerAccessToken]);
 
   useEffect(() => {
     const saved = loadStep2();
@@ -190,9 +231,7 @@ export function SetupPage() {
       // Correcao 1.4: login automatico do owner usando os valores core ja em memoria.
       // Client ad-hoc (independe das envs VITE do build atual) — fala direto com o Auth do Supabase.
       try {
-        const authClient = createClient(coreValues.supabase_url, coreValues.supabase_anon_key, {
-          auth: { persistSession: false },
-        });
+        const authClient = createClient(coreValues.supabase_url, coreValues.supabase_anon_key);
         const { data: signIn, error } = await authClient.auth.signInWithPassword({
           email: coreValues.owner_email,
           password: coreValues.owner_password,
@@ -218,7 +257,9 @@ export function SetupPage() {
     try {
       let token = ownerAccessToken;
       if (!token && isSupabaseConfigured) {
-        const { data } = await getSupabaseClient().auth.getSession();
+        const client = getSupabaseClient();
+        if (!client) throw new Error('Cliente Supabase nao disponivel.');
+        const { data } = await client.auth.getSession();
         token = data.session?.access_token ?? null;
       }
       if (!token) {
@@ -232,6 +273,7 @@ export function SetupPage() {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message ?? 'Erro ao salvar credenciais');
       clearStep2();
+      try { sessionStorage.removeItem(STEP_SESSION_KEY); sessionStorage.removeItem(TOKEN_SESSION_KEY); } catch {}
       window.location.href = setupConfig.postBootstrapRedirect;
     } catch (err) {
       setBootstrapError(err instanceof Error ? err.message : 'Erro ao finalizar setup');

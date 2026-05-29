@@ -78,7 +78,7 @@ export function EditorPage() {
 
         if (slidesData && slidesData.length > 0) {
           const editorSlides: EditorSlide[] = slidesData.map((s) => {
-            const canvas = s.canvas_json as Record<string, unknown>;
+            const canvas = (s.canvas_json ?? {}) as Record<string, unknown>;
             const elements = Array.isArray(canvas.elements)
               ? canvas.elements.map((el: Record<string, unknown>, idx: number) => ({
                   id: `el_${s.id}_${idx}`,

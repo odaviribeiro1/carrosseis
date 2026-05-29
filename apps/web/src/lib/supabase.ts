@@ -11,9 +11,6 @@ const supabaseClient = isSupabaseConfigured
 
 export type ContentHubSupabaseClient = NonNullable<typeof supabaseClient>;
 
-export function getSupabaseClient(): ContentHubSupabaseClient {
-  if (!supabaseClient) {
-    throw new Error('Supabase ainda nao configurado. Acesse /setup.');
-  }
+export function getSupabaseClient(): ContentHubSupabaseClient | null {
   return supabaseClient;
 }

@@ -21,14 +21,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, message: 'Metodo nao permitido' });
 
   const body = req.body as BootstrapBody;
-  const cryptoKey = process.env.CRYPTO_KEY && /^[a-f0-9]{64}$/i.test(process.env.CRYPTO_KEY)
-    ? process.env.CRYPTO_KEY
-    : randomBytes(32).toString('hex');
 
   try {
     validateBody(body);
     const projectRef = new URL(body.supabase_url).hostname.split('.')[0];
     if (!projectRef) throw new Error('Nao foi possivel extrair o project ref do Supabase.');
+    const cryptoKey = await getOrCreateCryptoKey(projectRef, body.supabase_pat);
 
     await runSql(createBootstrapStateSql(), projectRef, body.supabase_pat);
     await checkpoint(projectRef, body.supabase_pat, 'connection_ok', {});
@@ -131,6 +129,34 @@ function errorMessage(err: unknown): string {
   }
 }
 
+async function getOrCreateCryptoKey(ref: string, pat: string): Promise<string> {
+  const existing = await readCheckpointMetadata(ref, pat, 'crypto_key');
+  const stored = existing?.key ?? '';
+  if (typeof stored === 'string' && /^[a-f0-9]{64}$/i.test(stored)) return stored;
+
+  const fresh = process.env.CRYPTO_KEY && /^[a-f0-9]{64}$/i.test(process.env.CRYPTO_KEY)
+    ? process.env.CRYPTO_KEY
+    : randomBytes(32).toString('hex');
+  await checkpoint(ref, pat, 'crypto_key', { key: fresh });
+  return fresh;
+}
+
+async function readCheckpointMetadata(ref: string, pat: string, step: string): Promise<Record<string, unknown> | null> {
+  const escaped = step.replace(/'/g, "''");
+  try {
+    const result = await runSql(
+      `SELECT metadata FROM public._bootstrap_state WHERE step = '${escaped}'`,
+      ref, pat,
+    );
+    if (Array.isArray(result) && result.length > 0 && result[0]?.metadata) {
+      return result[0].metadata as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function validateBody(body: Partial<BootstrapBody>) {
   if (!body.supabase_url || !/^https:\/\/[a-z0-9]+\.supabase\.co$/.test(body.supabase_url)) {
     throw new Error('URL do Supabase invalida.');
@@ -169,7 +195,7 @@ async function runSql(query: string, ref: string, pat: string) {
 async function hasCheckpoint(ref: string, pat: string, step: string): Promise<boolean> {
   const escaped = step.replace(/'/g, "''");
   const result = await runSql(`SELECT step FROM public._bootstrap_state WHERE step = '${escaped}'`, ref, pat);
-  return JSON.stringify(result).includes(step);
+  return Array.isArray(result) && result.length > 0;
 }
 
 async function checkpoint(ref: string, pat: string, step: string, metadata: unknown) {
@@ -186,8 +212,8 @@ async function checkpoint(ref: string, pat: string, step: string, metadata: unkn
 
 async function listCheckpoints(ref: string, pat: string): Promise<string[]> {
   const result = await runSql('SELECT step FROM public._bootstrap_state ORDER BY completed_at', ref, pat);
-  const text = JSON.stringify(result);
-  return [...text.matchAll(/"step"\s*:\s*"([^"]+)"/g)].map((match) => match[1] ?? '');
+  if (!Array.isArray(result)) return [];
+  return result.map((row: Record<string, unknown>) => String(row?.step ?? '')).filter(Boolean);
 }
 
 function listEdgeFunctionSlugs(): string[] {
@@ -368,14 +394,9 @@ async function triggerVercelRedeploy(
 }
 
 async function readRedeployCheckpoint(ref: string, pat: string): Promise<DeploymentRef> {
-  const result = await runSql(
-    "SELECT metadata FROM public._bootstrap_state WHERE step = 'redeploy_triggered'",
-    ref,
-    pat,
-  );
-  const text = JSON.stringify(result);
+  const meta = await readCheckpointMetadata(ref, pat, 'redeploy_triggered');
   return {
-    deployment_id: text.match(/"deployment_id"\s*:\s*"([^"]*)"/)?.[1] ?? '',
-    deployment_url: text.match(/"deployment_url"\s*:\s*"([^"]*)"/)?.[1] ?? '',
+    deployment_id: typeof meta?.deployment_id === 'string' ? meta.deployment_id : '',
+    deployment_url: typeof meta?.deployment_url === 'string' ? meta.deployment_url : '',
   };
 }
