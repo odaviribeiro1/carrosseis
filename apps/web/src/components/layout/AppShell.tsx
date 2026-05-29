@@ -2,10 +2,8 @@ import { type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
-  Palette,
   PlusCircle,
   LogOut,
-  LayoutTemplate,
   Users,
   KeyRound,
 } from 'lucide-react';
@@ -19,10 +17,8 @@ interface AppShellProps {
 }
 
 const baseNavItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/', label: 'Meu Painel', icon: LayoutDashboard },
   { href: '/create', label: 'Novo Carrossel', icon: PlusCircle },
-  { href: '/templates', label: 'Templates', icon: LayoutTemplate },
-  { href: '/settings/brand-kits', label: 'Brand Kits', icon: Palette },
 ];
 
 const ownerNavItem = { href: '/settings/members', label: 'Membros', icon: Users };

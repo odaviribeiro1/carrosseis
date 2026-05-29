@@ -32,9 +32,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CarouselPreview } from '@/components/preview/CarouselPreview';
+import { VisualSettingsStep } from '@/components/create/VisualSettingsStep';
 import { getSupabaseClient } from '@/lib/supabase';
-import { generatedContentSchema } from '@/types/carousel';
-import type { SlideContent } from '@/types/carousel';
+import { generatedContentSchema, visualSettingsSchema } from '@/types/carousel';
+import type { SlideContent, VisualSettings } from '@/types/carousel';
 
 type ContentSource = 'text' | 'url' | 'youtube' | 'twitter';
 
@@ -62,6 +63,15 @@ const sourceLabels: Record<ContentSource, string> = {
   twitter: 'Twitter/X',
 };
 
+const defaultVisualSettings: VisualSettings = {
+  imageStyle: 'realista',
+  colorPalette: ['#1E3A5F', '#3B82F6', '#94A3B8', '#F8FAFC', '#0F1223'],
+  aspectRatio: '4:5',
+  referenceImageUrl: null,
+  imagePrompt: '',
+  resolution: 'standard',
+};
+
 export function CreateCarouselPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -71,6 +81,8 @@ export function CreateCarouselPage() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedSlides, setGeneratedSlides] = useState<SlideContent[]>([]);
+  const [configValues, setConfigValues] = useState<ConfigFormValues | null>(null);
+  const [visualSettings, setVisualSettings] = useState<VisualSettings>(defaultVisualSettings);
 
   const {
     register,
@@ -111,7 +123,8 @@ export function CreateCarouselPage() {
     }
   }
 
-  async function generateCarousel(data: ConfigFormValues) {
+  async function generateCarousel(visual: VisualSettings) {
+    if (!configValues) return;
     setIsGenerating(true);
     try {
       const client = getSupabaseClient();
@@ -119,12 +132,13 @@ export function CreateCarouselPage() {
 
       const { data: result, error } = await client.functions.invoke('generate-content', {
         body: {
-          topic: data.topic,
+          topic: configValues.topic,
           content: transcription || content,
-          audience: data.audience,
-          tone_of_voice: data.toneOfVoice,
-          slide_count: data.slideCount,
-          category: data.category,
+          audience: configValues.audience,
+          tone_of_voice: configValues.toneOfVoice,
+          slide_count: configValues.slideCount,
+          category: configValues.category,
+          visual_settings: visual,
         },
       });
 
@@ -138,7 +152,8 @@ export function CreateCarouselPage() {
       }
 
       setGeneratedSlides(parsed.data.slides);
-      setStep(3);
+      setVisualSettings(visual);
+      setStep(4);
       toast.success('Carrossel gerado com sucesso');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao gerar carrossel');
@@ -172,6 +187,24 @@ export function CreateCarouselPage() {
         .single();
 
       if (carouselError) throw carouselError;
+
+      // Save visual settings
+      const parsedVisual = visualSettingsSchema.safeParse(visualSettings);
+      if (parsedVisual.success) {
+        const { error: vsError } = await client
+          .from('carousel_visual_settings')
+          .insert({
+            carousel_id: carousel.id,
+            image_style: parsedVisual.data.imageStyle,
+            color_palette: parsedVisual.data.colorPalette,
+            aspect_ratio: parsedVisual.data.aspectRatio,
+            reference_image_url: parsedVisual.data.referenceImageUrl,
+            image_prompt: parsedVisual.data.imagePrompt,
+            resolution: parsedVisual.data.resolution,
+          });
+
+        if (vsError) console.error('Erro ao salvar config visual:', vsError);
+      }
 
       // Create slides
       const slides = generatedSlides.map((slide) => ({
@@ -313,7 +346,7 @@ export function CreateCarouselPage() {
               <CardDescription>Defina os parametros de geracao.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit(generateCarousel)} className="space-y-4">
+              <form onSubmit={handleSubmit((data) => { setConfigValues(data); setStep(3); })} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Tema / Topico</Label>
                   <Input {...register('topic')} placeholder="Ex: 5 dicas de produtividade" />
@@ -355,12 +388,8 @@ export function CreateCarouselPage() {
                   <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">
                     <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
                   </Button>
-                  <Button type="submit" className="flex-1" disabled={isGenerating}>
-                    {isGenerating ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando...</>
-                    ) : (
-                      <>Gerar Carrossel <ArrowRight className="ml-2 h-4 w-4" /></>
-                    )}
+                  <Button type="submit" className="flex-1">
+                    Avancar <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </div>
               </form>
@@ -369,13 +398,22 @@ export function CreateCarouselPage() {
         )}
 
         {step === 3 && (
+          <VisualSettingsStep
+            initial={visualSettings}
+            onBack={() => setStep(2)}
+            onGenerate={(visual) => void generateCarousel(visual)}
+            isGenerating={isGenerating}
+          />
+        )}
+
+        {step === 4 && (
           <CarouselPreview
             slides={generatedSlides}
             onAccept={() => void acceptCarousel()}
-            onReject={() => setStep(2)}
+            onReject={() => setStep(3)}
             onRegenerate={() => {
               setGeneratedSlides([]);
-              setStep(2);
+              setStep(3);
             }}
             onUpdateSlide={(position, field, value) => {
               setGeneratedSlides((prev) =>

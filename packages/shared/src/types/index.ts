@@ -42,6 +42,19 @@ export interface Carousel {
   updated_at: string;
 }
 
+export interface CarouselVisualSettings {
+  id: string;
+  carousel_id: string;
+  image_style: string;
+  color_palette: string[];
+  aspect_ratio: string;
+  reference_image_url: string | null;
+  image_prompt: string;
+  resolution: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CarouselSlide {
   id: string;
   carousel_id: string;

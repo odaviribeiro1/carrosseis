@@ -16,6 +16,17 @@ export const generatedContentSchema = z.object({
 export type SlideContent = z.infer<typeof slideContentSchema>;
 export type GeneratedContent = z.infer<typeof generatedContentSchema>;
 
+export const visualSettingsSchema = z.object({
+  imageStyle: z.string().min(1, 'Selecione um estilo'),
+  colorPalette: z.array(z.string()).length(5),
+  aspectRatio: z.string().min(1, 'Selecione uma proporcao'),
+  referenceImageUrl: z.string().nullable().default(null),
+  imagePrompt: z.string().default(''),
+  resolution: z.string().min(1, 'Selecione uma resolucao'),
+});
+
+export type VisualSettings = z.infer<typeof visualSettingsSchema>;
+
 export const canvasJsonSchema = z.object({
   width: z.number().default(1080),
   height: z.number().default(1350),

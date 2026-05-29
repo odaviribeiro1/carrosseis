@@ -18,12 +18,6 @@ const CreateCarouselPage = React.lazy(() =>
 const EditorPage = React.lazy(() =>
   import('@/pages/EditorPage').then((m) => ({ default: m.EditorPage }))
 );
-const TemplatesPage = React.lazy(() =>
-  import('@/pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage }))
-);
-const BrandKitsPage = React.lazy(() =>
-  import('@/pages/BrandKitsPage').then((m) => ({ default: m.BrandKitsPage }))
-);
 const MembersPage = React.lazy(() =>
   import('@/pages/MembersPage').then((m) => ({ default: m.MembersPage }))
 );
@@ -62,8 +56,6 @@ export function App() {
                         <Routes>
                           <Route path="/" element={<DashboardPage />} />
                           <Route path="/create" element={<CreateCarouselPage />} />
-                          <Route path="/templates" element={<TemplatesPage />} />
-                          <Route path="/settings/brand-kits" element={<BrandKitsPage />} />
                           <Route path="/settings/members" element={<MembersPage />} />
                           <Route path="/settings/credentials" element={<CredentialsSettingsPage />} />
                           <Route path="/settings" element={<Navigate to="/settings/credentials" replace />} />
