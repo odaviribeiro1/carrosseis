@@ -29,9 +29,13 @@ export function useCarouselSave() {
         const canvasJson = {
           width: 1080,
           height: 1350,
+          backgroundColor: slide.backgroundColor,
           elements: slide.elements.map((el) => ({
             type: el.type,
             attrs: el.attrs,
+            name: el.name,
+            visible: el.visible,
+            locked: el.locked,
           })),
         };
 

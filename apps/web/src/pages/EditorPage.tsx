@@ -61,6 +61,11 @@ export function EditorPage() {
   useEffect(() => {
     if (!id) return;
 
+    // Guard against stale/duplicate responses overwriting in-memory edits. Without this, React
+    // StrictMode's double-invoke (dev) — or any re-fetch on navigation — lets a late response
+    // call setSlides() AFTER the user has started editing, silently wiping unsaved elements.
+    let ignore = false;
+
     async function loadCarousel() {
       const client = getSupabaseClient();
       if (!client) return;
@@ -75,6 +80,7 @@ export function EditorPage() {
           .order('position', { ascending: true });
 
         if (error) throw error;
+        if (ignore) return;
 
         if (slidesData && slidesData.length > 0) {
           const editorSlides: EditorSlide[] = slidesData.map((s) => {
@@ -83,9 +89,10 @@ export function EditorPage() {
               ? canvas.elements.map((el: Record<string, unknown>, idx: number) => ({
                   id: `el_${s.id}_${idx}`,
                   type: ((el.type as string) || 'Rect') as EditorElement['type'],
-                  name: `${el.type || 'Elemento'} ${idx + 1}`,
-                  visible: true,
-                  locked: false,
+                  // Restore persisted layer metadata (falls back gracefully for legacy rows).
+                  name: (el.name as string) || `${el.type || 'Elemento'} ${idx + 1}`,
+                  visible: el.visible === undefined ? true : Boolean(el.visible),
+                  locked: el.locked === undefined ? false : Boolean(el.locked),
                   attrs: (el.attrs as Record<string, unknown>) || {},
                 }))
               : [];
@@ -94,7 +101,7 @@ export function EditorPage() {
               id: s.id as string,
               position: s.position as number,
               elements,
-              backgroundColor: '#ffffff',
+              backgroundColor: (canvas.backgroundColor as string) || '#ffffff',
             };
           });
 
@@ -109,14 +116,18 @@ export function EditorPage() {
           }]);
         }
       } catch (err) {
+        if (ignore) return;
         toast.error('Erro ao carregar carrossel');
         console.error(err);
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     }
 
     void loadCarousel();
+    return () => {
+      ignore = true;
+    };
   }, [id, setCarouselId, setSlides]);
 
   if (isMobile) {
