@@ -10,7 +10,6 @@ import { useAuthStore } from '@/stores/auth-store';
 export function CredentialsSettingsPage() {
   const [presence, setPresence] = useState<Record<string, { exists: boolean }>>({});
   const [changed, setChanged] = useState<Record<string, string>>({});
-  const [valid, setValid] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { session } = useAuthStore();
@@ -43,10 +42,6 @@ export function CredentialsSettingsPage() {
     });
   }, []);
 
-  const handleValidationChange = useCallback((key: string, isValid: boolean) => {
-    setValid((current) => ({ ...current, [key]: isValid }));
-  }, []);
-
   async function save() {
     setSaving(true);
     try {
@@ -67,7 +62,6 @@ export function CredentialsSettingsPage() {
         return next;
       });
       setChanged({});
-      setValid({});
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar credenciais');
     } finally {
@@ -115,7 +109,6 @@ export function CredentialsSettingsPage() {
                     field={field}
                     initialHasValue={Boolean(presence[field.key]?.exists) && changed[field.key] === undefined}
                     onChange={handleChange}
-                    onValidationChange={handleValidationChange}
                   />
                 ))}
               </div>
