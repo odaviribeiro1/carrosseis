@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Eye, EyeOff, ExternalLink, X } from 'lucide-react';
 import type { CredentialField as CredentialFieldConfig } from '../../../../../setup.config';
 
@@ -23,6 +23,16 @@ export function CredentialField({
   );
   const [message, setMessage] = useState('');
 
+  // Guardamos os callbacks em refs para NAO precisar lista-los nas deps do efeito abaixo.
+  // Se eles entrassem nas deps e o pai os recriasse a cada render (arrow inline), o efeito
+  // — que chama onChange() — dispararia em loop infinito, travando a pagina.
+  const onChangeRef = useRef(onChange);
+  const onValidationChangeRef = useRef(onValidationChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+    onValidationChangeRef.current = onValidationChange;
+  });
+
   useEffect(() => {
     setEditing(!initialHasValue);
     setStatus(initialHasValue ? 'valid' : 'idle');
@@ -30,11 +40,11 @@ export function CredentialField({
 
   useEffect(() => {
     if (!editing) return;
-    onChange(field.key, value || null);
+    onChangeRef.current(field.key, value || null);
     if (!value) {
       setStatus('idle');
       setMessage('');
-      onValidationChange?.(field.key, false);
+      onValidationChangeRef.current?.(field.key, false);
       return;
     }
 
@@ -51,17 +61,17 @@ export function CredentialField({
         .then((result: { valid?: boolean; message?: string }) => {
           setStatus(result.valid ? 'valid' : 'invalid');
           setMessage(result.message ?? '');
-          onValidationChange?.(field.key, Boolean(result.valid));
+          onValidationChangeRef.current?.(field.key, Boolean(result.valid));
         })
         .catch(() => {
           setStatus('invalid');
           setMessage('Servico de validacao indisponivel, tente novamente.');
-          onValidationChange?.(field.key, false);
+          onValidationChangeRef.current?.(field.key, false);
         });
     }, 800);
 
     return () => window.clearTimeout(timeout);
-  }, [editing, field, onChange, onValidationChange, value]);
+  }, [editing, field, value]);
 
   const inputType = useMemo(() => {
     if (field.inputType !== 'password') return 'text';

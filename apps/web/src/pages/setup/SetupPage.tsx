@@ -169,6 +169,16 @@ export function SetupPage() {
     setValid((current) => ({ ...current, [key]: ok }));
   }, []);
 
+  // Identidade estavel obrigatoria: o CredentialField chama estes handlers de dentro de um
+  // useEffect que os tem como dependencia. Arrow inline -> loop infinito de render -> trava.
+  const updateAppCredential = useCallback((key: string, value: string | null) => {
+    setAppCredentials((current) => ({ ...current, [key]: value ?? '' }));
+  }, []);
+
+  const handleAppValid = useCallback((key: string, isValid: boolean) => {
+    setAppValid((current) => ({ ...current, [key]: isValid }));
+  }, []);
+
   const validateCore = useCallback(
     async (key: keyof CoreValues, value: string): Promise<{ ok: boolean; message?: string }> => {
       switch (key) {
@@ -305,8 +315,8 @@ export function SetupPage() {
               valid={appValid}
               saving={saving}
               error={bootstrapError}
-              onChange={(key, value) => setAppCredentials((current) => ({ ...current, [key]: value ?? '' }))}
-              onValidationChange={(key, isValid) => setAppValid((current) => ({ ...current, [key]: isValid }))}
+              onChange={updateAppCredential}
+              onValidationChange={handleAppValid}
               canSubmit={allAppValid}
               onSubmit={finishSetup}
             />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ArrowLeft, KeyRound, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -30,6 +30,22 @@ export function CredentialsSettingsPage() {
     () => Object.keys(changed).length > 0 && Object.keys(changed).every((key) => valid[key]),
     [changed, valid],
   );
+
+  // Estes handlers PRECISAM ter identidade estavel: o CredentialField os lista no array de
+  // dependencias de um useEffect que, por sua vez, chama onChange(). Se forem recriados a cada
+  // render (arrow inline), o efeito dispara em loop infinito -> a pagina trava. Ver useCallback.
+  const handleChange = useCallback((key: string, value: string | null) => {
+    setChanged((current) => {
+      const next = { ...current };
+      if (value === null) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+  }, []);
+
+  const handleValidationChange = useCallback((key: string, isValid: boolean) => {
+    setValid((current) => ({ ...current, [key]: isValid }));
+  }, []);
 
   async function save() {
     setSaving(true);
@@ -98,15 +114,8 @@ export function CredentialsSettingsPage() {
                     key={`${field.key}-${presence[field.key]?.exists ? 'set' : 'empty'}-${changed[field.key] ? 'changed' : 'idle'}`}
                     field={field}
                     initialHasValue={Boolean(presence[field.key]?.exists) && changed[field.key] === undefined}
-                    onChange={(key, value) => {
-                      setChanged((current) => {
-                        const next = { ...current };
-                        if (value === null) delete next[key];
-                        else next[key] = value;
-                        return next;
-                      });
-                    }}
-                    onValidationChange={(key, isValid) => setValid((current) => ({ ...current, [key]: isValid }))}
+                    onChange={handleChange}
+                    onValidationChange={handleValidationChange}
                   />
                 ))}
               </div>
