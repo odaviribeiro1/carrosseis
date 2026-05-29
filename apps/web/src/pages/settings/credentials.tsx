@@ -27,8 +27,8 @@ export function CredentialsSettingsPage() {
   }, [session?.access_token]);
 
   const canSave = useMemo(
-    () => Object.keys(changed).length > 0 && Object.keys(changed).every((key) => valid[key]),
-    [changed, valid],
+    () => Object.keys(changed).length > 0,
+    [changed],
   );
 
   // Estes handlers PRECISAM ter identidade estavel: o CredentialField os lista no array de
