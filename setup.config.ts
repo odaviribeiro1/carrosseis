@@ -15,20 +15,15 @@ export type SetupConfig = {
   postBootstrapRedirect: string;
 };
 
-async function validateWithEndpoint(
+async function validateWithFormat(
   value: string,
-  endpoint: string,
-  headers: HeadersInit = {},
+  prefix: string,
+  minLength: number,
 ): Promise<{ ok: boolean; message?: string }> {
   if (!value.trim()) return { ok: false, message: 'Informe um valor.' };
-  try {
-    const res = await fetch(endpoint, { headers });
-    return res.ok
-      ? { ok: true }
-      : { ok: false, message: 'Credencial invalida ou sem permissao.' };
-  } catch {
-    return { ok: false, message: 'Nao foi possivel validar agora. Confira o formato.' };
-  }
+  if (!value.startsWith(prefix)) return { ok: false, message: `Deve comecar com ${prefix}` };
+  if (value.length < minLength) return { ok: false, message: `Deve ter no minimo ${minLength} caracteres` };
+  return { ok: true };
 }
 
 export const setupConfig: SetupConfig = {
@@ -44,9 +39,7 @@ export const setupConfig: SetupConfig = {
       docsUrl: 'https://platform.openai.com/api-keys',
       helpText: 'Usada para geracao de conteudo (LLM).',
       validate: async (value) =>
-        validateWithEndpoint(value, 'https://api.openai.com/v1/models', {
-          Authorization: `Bearer ${value}`,
-        }),
+        validateWithFormat(value, 'sk-', 20),
     },
     {
       key: 'google_api_key',
@@ -56,7 +49,7 @@ export const setupConfig: SetupConfig = {
       docsUrl: 'https://aistudio.google.com/app/apikey',
       helpText: 'Usada para geracao de imagens (Gemini) e transcricao.',
       validate: async (value) =>
-        validateWithEndpoint(value, `https://generativelanguage.googleapis.com/v1beta/models?key=${value}`),
+        validateWithFormat(value, 'AIza', 20),
     },
   ],
 };

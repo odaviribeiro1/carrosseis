@@ -140,7 +140,7 @@ export function CredentialField({
           </div>
               <div className="flex min-h-5 items-center justify-between gap-3">
             <p className={`text-xs ${status === 'invalid' ? 'text-[#EF4444]' : 'text-[#94A3B8]'}`}>
-              {status === 'validating' ? 'Validando...' : status === 'invalid' ? 'Validacao via servidor falhou, mas voce pode salvar e testar.' : message}
+              {status === 'validating' ? 'Validando...' : message}
             </p>
             {initialHasValue && (
               <button type="button" onClick={cancel} className="text-xs font-medium text-[#94A3B8] hover:text-[#F8FAFC]">
