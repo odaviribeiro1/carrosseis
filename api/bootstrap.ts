@@ -26,9 +26,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     validateBody(body);
     const projectRef = new URL(body.supabase_url).hostname.split('.')[0];
     if (!projectRef) throw new Error('Nao foi possivel extrair o project ref do Supabase.');
-    const cryptoKey = await getOrCreateCryptoKey(projectRef, body.supabase_pat);
 
+    // The _bootstrap_state table must exist before anything reads/writes checkpoints.
+    // getOrCreateCryptoKey() persists a checkpoint, so it must run AFTER this DDL — otherwise
+    // a truly fresh project (no table yet) crashes on its first bootstrap call.
     await runSql(createBootstrapStateSql(), projectRef, body.supabase_pat);
+    const cryptoKey = await getOrCreateCryptoKey(projectRef, body.supabase_pat);
     await checkpoint(projectRef, body.supabase_pat, 'connection_ok', {});
 
     const migrationsDir = join(ROOT, 'supabase', 'migrations');
