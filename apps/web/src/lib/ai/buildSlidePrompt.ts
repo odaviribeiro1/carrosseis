@@ -62,9 +62,11 @@ export function buildSlidePrompt(args: BuildSlidePromptArgs): string {
     `Crie um slide de carrossel para Instagram, proporção 4:5 (1080x1350px), estilo ${style}.`,
   );
   lines.push(`Este é o slide ${slideIndex + 1} de ${slideTotal} (tipo: ${content.type}).`);
-  lines.push(`Paleta de cores (hex): ${palette}.`);
+  lines.push(
+    `Use esta paleta de cores APENAS como referência de design do slide (cores de fundo, texto e elementos): ${palette}. NÃO escreva nem desenhe estes códigos na imagem.`,
+  );
   lines.push('');
-  lines.push('Renderize EXATAMENTE o seguinte texto na imagem, sem alterar, traduzir nem abreviar:');
+  lines.push('O ÚNICO texto que deve aparecer na imagem é o listado abaixo. Renderize-o EXATAMENTE, sem alterar, traduzir nem abreviar:');
 
   const headlineRole = designSpec.hierarchy.headline;
   const headlineStyle = ts[headlineRole];
@@ -112,6 +114,9 @@ export function buildSlidePrompt(args: BuildSlidePromptArgs): string {
 
   lines.push(
     'Use os tamanhos de fonte como proporção relativa entre os textos, garantindo legibilidade e alto contraste com o fundo.',
+  );
+  lines.push(
+    'PROIBIDO: não renderize na imagem nenhum código de cor hexadecimal (ex: #1E3A5F), amostra/swatch de cor, barra ou legenda de paleta. Esses códigos são só instrução de design, nunca conteúdo visível.',
   );
   lines.push(
     `Mantenha consistência visual com os demais ${slideTotal} slides do carrossel (mesma identidade, paleta e tipografia).`,
