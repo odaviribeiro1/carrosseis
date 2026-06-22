@@ -488,10 +488,15 @@ export function CreateCarouselPage() {
   ): Promise<Array<string | null>> {
     const images: Array<string | null> = [];
     for (let i = 0; i < generatedSlides.length; i++) {
+      const slide = generatedSlides[i];
+      if (!slide) {
+        images.push(null);
+        continue;
+      }
       setAcceptProgress(`Gerando imagens ${i + 1}/${generatedSlides.length}`);
       try {
         const { data, error } = await client.functions.invoke('generate-image', {
-          body: { prompt: buildSlideImagePrompt(generatedSlides[i], visualSettings) },
+          body: { prompt: buildSlideImagePrompt(slide, visualSettings) },
         });
         if (error) throw error;
         const result = data as { image?: string; error?: string };
