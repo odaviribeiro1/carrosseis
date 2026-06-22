@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Palette, Upload, X, ArrowLeft, Sparkles, Loader2 } from 'lucide-react';
+import { Palette, Upload, X, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -288,7 +288,7 @@ export function VisualSettingsStep({ initial, onBack, onGenerate, isGenerating }
             {isGenerating ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando...</>
             ) : (
-              <><Sparkles className="mr-2 h-4 w-4" /> Gerar Carrossel</>
+              <>Proximo <ArrowRight className="ml-2 h-4 w-4" /></>
             )}
           </Button>
         </div>
