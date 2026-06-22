@@ -776,7 +776,6 @@ export function CreateCarouselPage() {
         {step === 4 && (
           <CarouselPreview
             slides={generatedSlides}
-            accepting={isAccepting}
             onAccept={() => void acceptCarousel()}
             onReject={() => setStep(3)}
             onRegenerate={() => {
