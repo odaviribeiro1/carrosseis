@@ -771,7 +771,6 @@ export function CreateCarouselPage() {
           }
         });
 
-        toast.success('Carrossel gerado');
         navigate(`/editor/${carouselId}`);
       } else {
         toast.success('Rascunho salvo');
