@@ -816,7 +816,7 @@ export function CreateCarouselPage() {
     <div className="p-6">
       <div className="mx-auto max-w-2xl">
         <h1 className="mb-6 text-2xl font-bold text-[#F8FAFC]">
-          {editingId ? 'Editar Rascunho' : 'Novo Carrossel'}
+          {editingId ? 'Editar Carrossel' : 'Novo Carrossel'}
         </h1>
 
         {step === 1 && (

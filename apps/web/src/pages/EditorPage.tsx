@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ImageOff,
   ImagePlus,
+  Pencil,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -325,9 +326,14 @@ export function EditorPage() {
     <div className="flex h-screen flex-col bg-[#0A0A0F]">
       {/* Top bar */}
       <div className="flex items-center justify-between border-b border-[rgba(59,130,246,0.15)] px-4 py-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Dashboard
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
+            <ArrowLeft className="mr-2 h-4 w-4" /> Dashboard
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate(`/draft/${id}`)} disabled={busy}>
+            <Pencil className="mr-2 h-4 w-4" /> Voltar para a etapa anterior
+          </Button>
+        </div>
         <div className="flex items-center gap-2 text-sm text-[#94A3B8]">
           <Layers className="h-4 w-4" /> {slides.length} slides
         </div>
