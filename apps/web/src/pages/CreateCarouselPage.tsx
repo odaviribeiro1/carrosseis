@@ -865,7 +865,7 @@ export function CreateCarouselPage() {
                         onChange={(e) => setUrl(e.target.value)}
                       />
                       <Button
-                        variant="outline"
+                        variant={url.trim() && !scrape && !transcript ? 'default' : 'outline'}
                         onClick={() => void extractContent()}
                         disabled={isExtracting || !url.trim()}
                       >
@@ -892,7 +892,7 @@ export function CreateCarouselPage() {
                           Slides extraidos ({scrape.images.length})
                         </p>
                         <Button
-                          variant="outline"
+                          variant={ocrResults.length === 0 ? 'default' : 'outline'}
                           size="sm"
                           onClick={() => void runCarouselOcr()}
                           disabled={isOcring || selectedSlides.size === 0}
