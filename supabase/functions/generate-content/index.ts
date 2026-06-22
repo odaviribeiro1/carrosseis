@@ -50,13 +50,24 @@ function buildPrompt(params: {
   audience: string;
   slideCount: number;
   category: string;
+  angle: string;
+  maxWords: number;
+  keepOriginalTone: boolean;
 }): string {
+  const toneLine = params.keepOriginalTone
+    ? 'Tom de voz: mantenha FIELMENTE o tom de voz original do conteudo fornecido.'
+    : `Tom de voz: ${params.toneOfVoice || 'profissional e acessivel'}`;
+  const angleLine = params.angle?.trim()
+    ? `Angulo/foco da adaptacao: ${params.angle.trim()}`
+    : '';
+
   return `Voce e um especialista em criacao de carrosseis visuais.
 Gere o conteudo textual para um carrossel com ${params.slideCount} slides.
 
 Categoria do template: ${params.category}
 Publico-alvo: ${params.audience || 'geral'}
-Tom de voz: ${params.toneOfVoice || 'profissional e acessivel'}
+${toneLine}
+${angleLine}
 
 <user_content>
 ${params.content || params.topic}
@@ -89,9 +100,20 @@ Regras:
 - Os slides intermediarios devem ser tipo "conteudo"
 - O ultimo slide deve ser tipo "cta" com call-to-action
 - Cada headline deve ter no maximo 60 caracteres
-- Cada body deve ter no maximo 200 caracteres
+- CRITICO: o corpo (body) de CADA slide deve ter no MAXIMO ${params.maxWords} palavras. Se o conteudo exceder, DISTRIBUA em mais slides em vez de espremer texto. Nunca ultrapasse ${params.maxWords} palavras no corpo de um slide.
 - O conteudo deve ser relevante, engajante e adequado ao tom de voz
 - Use o idioma portugues do Brasil`;
+}
+
+// Prompt para encurtar corpos de slides que estouraram o teto de palavras.
+function buildShortenPrompt(slides: Array<{ position: number; body: string }>, maxWords: number): string {
+  return `Reescreva o corpo de cada slide abaixo para ter NO MAXIMO ${maxWords} palavras,
+preservando o sentido e o idioma (portugues do Brasil). Nao adicione comentarios.
+
+Slides:
+${JSON.stringify(slides)}
+
+Retorne APENAS um JSON valido: { "slides": [ { "position": <num>, "body": "<texto curto>" } ] }`;
 }
 
 Deno.serve(async (req: Request) => {
@@ -131,10 +153,14 @@ Deno.serve(async (req: Request) => {
       mode = 'slides',
       topic = '',
       content = '',
+      angle = '',
       audience = '',
       tone_of_voice = '',
+      keep_original_tone = false,
       slide_count = 5,
+      max_words = 35,
       category = 'educacional',
+      slides: slidesToShorten = [],
       provider: providerOverride,
       model: modelOverride,
     } = body;
@@ -195,6 +221,24 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Modo 'shorten': reescreve corpos que estouraram o teto de palavras.
+    if (mode === 'shorten') {
+      const shortenResult = await adapter.generateContent(
+        buildShortenPrompt(slidesToShorten, Number(max_words) || 35),
+        { apiKey, model, maxTokens: 2000 },
+      );
+      let parsed;
+      try {
+        parsed = JSON.parse(shortenResult.content);
+      } catch {
+        const m = shortenResult.content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        parsed = m?.[1] ? JSON.parse(m[1]) : { slides: [] };
+      }
+      return new Response(JSON.stringify(parsed), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const prompt = buildPrompt({
       content,
       topic,
@@ -202,6 +246,9 @@ Deno.serve(async (req: Request) => {
       audience,
       slideCount: slide_count,
       category,
+      angle,
+      maxWords: Number(max_words) || 35,
+      keepOriginalTone: Boolean(keep_original_tone),
     });
 
     const result = await adapter.generateContent(prompt, {

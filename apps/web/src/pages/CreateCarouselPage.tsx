@@ -36,10 +36,41 @@ import { buildSlidePrompt } from '@/lib/ai/buildSlidePrompt';
 
 type ContentSource = 'text' | 'ig_carousel' | 'ig_post' | 'ig_reel' | 'youtube';
 
+type Depth = 'superficial' | 'normal' | 'aprofundado';
+
+// Profundidade NAO aumenta densidade de texto por slide (quebra o Nano Banana em texto
+// longo); aumenta a QUANTIDADE de slides, mantendo um teto seguro de palavras por corpo.
+const DEPTH_CONFIG: Record<
+  Depth,
+  { wordCap: number; min: number; max: number; mid: number; label: string }
+> = {
+  superficial: { wordCap: 15, min: 3, max: 5, mid: 4, label: 'texto curto' },
+  normal: { wordCap: 35, min: 5, max: 8, mid: 6, label: 'texto medio' },
+  aprofundado: { wordCap: 55, min: 8, max: 12, mid: 10, label: 'texto longo' },
+};
+
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+// Trunca o corpo no teto de palavras, preferindo terminar em pontuacao de frase.
+function truncateToWordCap(text: string, cap: number): string {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= cap) return text.trim();
+  const slice = words.slice(0, cap).join(' ');
+  // Corta no fim da ultima frase completa, se houver dentro do limite.
+  const lastSentence = slice.match(/^[\s\S]*[.!?]/);
+  const result = lastSentence ? lastSentence[0] : slice;
+  return result.replace(/[\s,;:]+$/, '').trim();
+}
+
 const configSchema = z.object({
-  topic: z.string().min(1, 'Tema e obrigatorio'),
+  topic: z.string().optional().default(''),
+  angle: z.string().optional().default(''),
+  toneMode: z.enum(['original', 'custom']).default('original'),
   toneOfVoice: z.string().optional(),
   audience: z.string().optional(),
+  depth: z.enum(['superficial', 'normal', 'aprofundado']).default('normal'),
   slideCount: z.number().min(3).max(15),
 });
 
@@ -156,22 +187,53 @@ export function CreateCarouselPage() {
   const [slideSpecs, setSlideSpecs] = useState<DesignSpec[]>([]);
   const [configValues, setConfigValues] = useState<ConfigFormValues | null>(null);
   const [visualSettings, setVisualSettings] = useState<VisualSettings>(defaultVisualSettings);
+  // Conteudo extraido editavel na tela de Configuracao (origens Instagram/YouTube).
+  const [extractedDraft, setExtractedDraft] = useState('');
+  const [topicError, setTopicError] = useState('');
+
+  // Origem com conteudo extraido (vs. tema/texto livre).
+  const isExtracted = source !== 'text';
 
   const {
     register,
     handleSubmit,
     watch,
     setValue,
-    formState: { errors },
   } = useForm<ConfigFormValues>({
     resolver: zodResolver(configSchema),
     defaultValues: {
       topic: '',
+      angle: '',
+      toneMode: 'original',
       toneOfVoice: '',
       audience: '',
-      slideCount: 5,
+      depth: 'normal',
+      slideCount: DEPTH_CONFIG.normal.mid,
     },
   });
+
+  const depth = (watch('depth') ?? 'normal') as Depth;
+  const slideCountValue = watch('slideCount');
+
+  const toneMode = watch('toneMode');
+
+  // Profundidade dirige o default de quantidade de slides (faixa central).
+  function handleDepthChange(next: Depth) {
+    setValue('depth', next);
+    setValue('slideCount', DEPTH_CONFIG[next].mid);
+  }
+
+  function onSubmitConfig(data: ConfigFormValues) {
+    if (!isExtracted && !data.topic?.trim()) {
+      setTopicError('Tema e obrigatorio');
+      return;
+    }
+    setTopicError('');
+    const dc = DEPTH_CONFIG[data.depth];
+    const clampedCount = Math.min(dc.max, Math.max(dc.min, data.slideCount || dc.mid));
+    setConfigValues({ ...data, slideCount: clampedCount });
+    setStep(3);
+  }
 
   function resetExtraction() {
     setScrape(null);
@@ -357,8 +419,50 @@ export function CreateCarouselPage() {
 
   function goToConfigStep() {
     setStep(2);
-    // So sugere se o usuario ainda nao definiu um tema (evita sobrescrever ao voltar).
-    if (!watch('topic')?.trim()) void suggestTopic();
+    if (isExtracted) {
+      // Inicializa o preview editavel do conteudo extraido (so na primeira vez).
+      if (!extractedDraft.trim()) setExtractedDraft(buildFinalContent());
+    } else if (!watch('topic')?.trim()) {
+      // So sugere se o usuario ainda nao definiu um tema (evita sobrescrever ao voltar).
+      void suggestTopic();
+    }
+  }
+
+  // Validacao DUPLA do teto de palavras: alem da instrucao no prompt do LLM, garante
+  // pos-geracao que nenhum slide passa o teto — reprocessa via LLM e, no fim, trunca.
+  async function enforceWordCap(
+    client: NonNullable<ReturnType<typeof getSupabaseClient>>,
+    slides: SlideContent[],
+    cap: number,
+  ): Promise<SlideContent[]> {
+    let result = [...slides];
+    const over = result.filter((s) => countWords(s.body) > cap);
+
+    if (over.length > 0) {
+      try {
+        const { data, error } = await client.functions.invoke('generate-content', {
+          body: {
+            mode: 'shorten',
+            max_words: cap,
+            slides: over.map((s) => ({ position: s.position, body: s.body })),
+          },
+        });
+        if (!error) {
+          const shortened = (data as { slides?: Array<{ position: number; body: string }> })?.slides ?? [];
+          const byPos = new Map(shortened.map((s) => [s.position, s.body]));
+          result = result.map((s) =>
+            byPos.has(s.position) ? { ...s, body: byPos.get(s.position) as string } : s,
+          );
+        }
+      } catch (err) {
+        console.error('Erro ao encurtar slides acima do teto:', err);
+      }
+    }
+
+    // Garantia final: trunca de forma limpa qualquer corpo ainda acima do teto.
+    return result.map((s) =>
+      countWords(s.body) > cap ? { ...s, body: truncateToWordCap(s.body, cap) } : s,
+    );
   }
 
   async function generateCarousel(visual: VisualSettings) {
@@ -368,15 +472,20 @@ export function CreateCarouselPage() {
       const client = getSupabaseClient();
       if (!client) throw new Error('Nao configurado');
 
-      const finalContent = buildFinalContent();
+      const finalContent = isExtracted ? extractedDraft : buildFinalContent();
+      const cap = DEPTH_CONFIG[configValues.depth].wordCap;
+      const keepOriginalTone = isExtracted && configValues.toneMode === 'original';
 
       const { data: result, error } = await client.functions.invoke('generate-content', {
         body: {
           topic: configValues.topic,
           content: finalContent,
+          angle: configValues.angle,
           audience: configValues.audience,
-          tone_of_voice: configValues.toneOfVoice,
+          tone_of_voice: keepOriginalTone ? '' : configValues.toneOfVoice,
+          keep_original_tone: keepOriginalTone,
           slide_count: configValues.slideCount,
+          max_words: cap,
           visual_settings: visual,
         },
       });
@@ -390,9 +499,12 @@ export function CreateCarouselPage() {
         throw new Error('Resposta da IA nao esta no formato esperado');
       }
 
-      setGeneratedSlides(parsed.data.slides);
+      // Validacao dupla do teto de palavras (pos-geracao).
+      const cappedSlides = await enforceWordCap(client, parsed.data.slides, cap);
+
+      setGeneratedSlides(cappedSlides);
       // Defaults de design por slide (editaveis na Preview).
-      setSlideSpecs(parsed.data.slides.map((s) => defaultDesignSpec(s.type)));
+      setSlideSpecs(cappedSlides.map((s) => defaultDesignSpec(s.type)));
       setVisualSettings(visual);
       setStep(4);
       toast.success('Carrossel gerado com sucesso');
@@ -795,30 +907,83 @@ export function CreateCarouselPage() {
               <CardDescription>Defina os parametros de geracao.</CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit((data) => { setConfigValues(data); setStep(3); })} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Tema / Topico</Label>
-                  <div className="relative">
-                    <Input
-                      {...register('topic')}
-                      placeholder={isSuggestingTopic ? 'Gerando tema com IA...' : 'Ex: 5 dicas de produtividade'}
-                      disabled={isSuggestingTopic}
-                    />
-                    {isSuggestingTopic && (
-                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[#94A3B8]" />
+              <form onSubmit={handleSubmit(onSubmitConfig)} className="space-y-4">
+                {isExtracted ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Conteudo extraido (editavel)</Label>
+                      <textarea
+                        value={extractedDraft}
+                        onChange={(e) => setExtractedDraft(e.target.value)}
+                        rows={6}
+                        placeholder="Conteudo da extracao..."
+                        className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-3 py-2 text-xs text-[#CBD5E1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6]"
+                      />
+                      <p className="text-xs text-[#94A3B8]">Base do carrossel. Edite se quiser ajustar antes de gerar.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Angulo / Foco (opcional)</Label>
+                      <Input
+                        {...register('angle')}
+                        placeholder='Ex: "foque na parte de precificacao", "formato de lista"'
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Tema / Topico</Label>
+                    <div className="relative">
+                      <Input
+                        {...register('topic')}
+                        placeholder={isSuggestingTopic ? 'Gerando tema com IA...' : 'Ex: 5 dicas de produtividade'}
+                        disabled={isSuggestingTopic}
+                      />
+                      {isSuggestingTopic && (
+                        <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[#94A3B8]" />
+                      )}
+                    </div>
+                    {isSuggestingTopic ? (
+                      <p className="text-xs text-[#94A3B8]">Preenchendo o tema automaticamente a partir do conteudo...</p>
+                    ) : (
+                      topicError && <p className="text-sm text-red-400">{topicError}</p>
                     )}
                   </div>
-                  {isSuggestingTopic ? (
-                    <p className="text-xs text-[#94A3B8]">Preenchendo o tema automaticamente a partir do conteudo...</p>
-                  ) : (
-                    errors.topic && <p className="text-sm text-red-400">{errors.topic.message}</p>
-                  )}
-                </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Tom de Voz</Label>
-                    <Input {...register('toneOfVoice')} placeholder="Descontraido, profissional..." />
+                    {isExtracted && (
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setValue('toneMode', 'original')}
+                          className={`h-8 flex-1 rounded-md border px-2 text-[11px] transition-colors ${
+                            toneMode === 'original'
+                              ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.15)] text-[#60A5FA]'
+                              : 'border-[rgba(59,130,246,0.2)] text-[#94A3B8]'
+                          }`}
+                        >
+                          Manter original
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setValue('toneMode', 'custom')}
+                          className={`h-8 flex-1 rounded-md border px-2 text-[11px] transition-colors ${
+                            toneMode === 'custom'
+                              ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.15)] text-[#60A5FA]'
+                              : 'border-[rgba(59,130,246,0.2)] text-[#94A3B8]'
+                          }`}
+                        >
+                          Meu tom
+                        </button>
+                      </div>
+                    )}
+                    <Input
+                      {...register('toneOfVoice')}
+                      placeholder="Descontraido, profissional..."
+                      disabled={isExtracted && toneMode === 'original'}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Publico-Alvo</Label>
@@ -827,8 +992,44 @@ export function CreateCarouselPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label>Profundidade</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['superficial', 'normal', 'aprofundado'] as Depth[]).map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => handleDepthChange(d)}
+                        className={`rounded-md border px-2 py-2 text-center transition-colors ${
+                          depth === d
+                            ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.15)]'
+                            : 'border-[rgba(59,130,246,0.2)] hover:border-[rgba(59,130,246,0.4)]'
+                        }`}
+                      >
+                        <span className={`block text-xs font-medium capitalize ${depth === d ? 'text-[#60A5FA]' : 'text-[#F8FAFC]'}`}>
+                          {d}
+                        </span>
+                        <span className="block text-[10px] text-[#94A3B8]">
+                          {DEPTH_CONFIG[d].min}-{DEPTH_CONFIG[d].max} slides
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-[#94A3B8]">
+                    Estimativa: ~{slideCountValue} slides, {DEPTH_CONFIG[depth].label} (max {DEPTH_CONFIG[depth].wordCap} palavras/slide)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
                   <Label>Quantidade de Slides</Label>
-                  <Input type="number" min={3} max={15} {...register('slideCount', { valueAsNumber: true })} />
+                  <Input
+                    type="number"
+                    min={DEPTH_CONFIG[depth].min}
+                    max={DEPTH_CONFIG[depth].max}
+                    {...register('slideCount', { valueAsNumber: true })}
+                  />
+                  <p className="text-[10px] text-[#94A3B8]">
+                    Faixa da profundidade: {DEPTH_CONFIG[depth].min}-{DEPTH_CONFIG[depth].max}
+                  </p>
                 </div>
 
                 <div className="flex gap-2">

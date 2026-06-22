@@ -16,6 +16,25 @@ supabase functions deploy generate-slide-image
 
 Secrets necessários nas Edge Functions: `google_api_key` (ou `gemini_imagen_api_key`).
 
+## 0. Configuração adaptável + Profundidade
+
+| # | Passo | Esperado |
+|---|-------|----------|
+| 0a | Origem extraída (IG/YouTube) → Configuração | Campo "Tema/Tópico" some; aparece "Conteúdo extraído (editável)" + "Ângulo/Foco" |
+| 0b | Origem texto livre → Configuração | Mantém o campo de tema (com auto-sugestão) |
+| 0c | Toggle "Manter original" vs "Meu tom" (extraído) | Em "Meu tom", o campo de tom de voz habilita e altera o conteúdo gerado |
+| 0d | Escolher Profundidade | Quantidade de slides pré-preenche no centro da faixa (Superficial→4, Normal→6, Aprofundado→10); estimativa "~N slides, texto X" atualiza |
+| 0e | Gerar com Aprofundado | NENHUM slide passa de 55 palavras no corpo (validar via SQL abaixo); Aprofundado gera mais slides que Superficial |
+| 0f | Teto (15/35/55) | Repetir para Superficial e Normal; pós-geração nunca ultrapassa o teto |
+
+```sql
+-- Maior contagem de palavras no corpo dos slides gerados (não deve passar do teto)
+select position,
+       array_length(regexp_split_to_array(trim(coalesce(image_prompt,'')), '\s+'),1) as prompt_words
+from content_hub.carousel_slides where carousel_id = '<CAROUSEL_ID>' order by position;
+```
+> Obs.: o corpo literal vai dentro de `image_prompt`. Para conferir o teto com precisão, valide no preview antes de aceitar (cada slide mostra o corpo) ou rode a geração com o devtools aberto.
+
 ## 1. Funcionais
 
 | # | Passo | Esperado |
