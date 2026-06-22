@@ -26,7 +26,7 @@
 | Deploy Frontend | Vercel (root: `apps/web`) ou qualquer host estático |
 | Exportação | Client-side via Konva (`stage.toDataURL()` / `stage.toBlob()`) — PNG 1080×1350 (4:5) em canvas offscreen |
 | Filas/Jobs | Supabase pg_cron + **pg_net** (HTTP) → Edge Functions |
-| Transcrição | **Supadata API** para YouTube |
+| Transcrição | **Gemini** (Google AI) para YouTube/Shorts via `fileData.fileUri` (reusa a Google API key); **Whisper** para Reels do Instagram |
 | Geração de imagens | **Gemini** via Google AI API — dual-model: `gemini-3.1-flash-image-preview` (Nano Banana 2) → fallback `gemini-3-pro-image-preview` (Nano Banana Pro) |
 | LLM | Multi-provider com adapters: **OpenAI, Anthropic, Google (Gemini), Groq** — escolhido via secret `LLM_PROVIDER` |
 | Ícones embutidos | Lucide React |
@@ -72,7 +72,7 @@ content-hub/
 │   │   ├── _shared/            # helpers (CORS, auth)
 │   │   ├── generate-content/   # Proxy LLM multi-provider (OpenAI/Anthropic/Google/Groq)
 │   │   ├── generate-image/     # Proxy Gemini — dual-model fallback
-│   │   ├── transcribe/         # YouTube (Supadata)
+│   │   ├── transcribe/         # YouTube (Gemini) + Reels (Whisper)
 │   │   ├── create-invite/      # Criação de convite por email
 │   │   └── revoke-invite/      # Revogar convite
 │   └── seed.sql
@@ -214,7 +214,7 @@ Trigger `set_first_user_as_admin` em `auth.users` (criado em `021_default_worksp
 ### 2. Geração de Carrossel por IA
 
 1. Usuário escolhe **fonte de conteúdo**: texto livre, URL de blog, link YouTube, link Twitter/X.
-2. Se URL de YouTube → Edge Function `transcribe` extrai a transcrição via Supadata API.
+2. Se URL de YouTube → Edge Function `transcribe` extrai a transcrição via Gemini (nativo, `fileData.fileUri`).
 3. Usuário define tema, tom de voz (ou usa do Brand Kit), público-alvo, número de slides, categoria de template.
 4. Frontend chama Edge Function `generate-content`:
    - Lê `LLM_PROVIDER` e `LLM_MODEL` do ambiente (overrides via payload).
@@ -326,7 +326,7 @@ Apenas dois papéis em `content_hub.user_roles`:
 | `GOOGLE_API_KEY` | `generate-content`, `generate-image` | |
 | `GROQ_API_KEY` | `generate-content` | |
 | `GEMINI_IMAGEN_API_KEY` | `generate-image` | (alternativa a `GOOGLE_API_KEY`) |
-| `SUPADATA_API_KEY` | `transcribe` | YouTube |
+| `google_api_key` | `transcribe` | YouTube/Shorts (Gemini) |
 | `FRONTEND_ORIGIN` | `_shared/cors.ts` | Domínio do frontend em produção. Localhost, `*.supabase.co` e `*.vercel.app` já são liberados por padrão |
 
 ---
@@ -410,7 +410,7 @@ Todas devem:
 - Roles (`owner`/`member`) com promoção automática do primeiro usuário e self-signup fechado após o owner existir
 - Convites (`invites` + Edge Functions `create-invite`/`revoke-invite`)
 - Schema `content_hub` com todas as tabelas migradas
-- Edge Functions: `generate-content` (4 adapters), `generate-image` (Gemini dual-model), `transcribe` (Supadata YouTube)
+- Edge Functions: `generate-content` (4 adapters), `generate-image` (Gemini dual-model), `transcribe` (Gemini YouTube + Whisper Reels)
 - Editor Konva: Texto, Imagem, Shapes, Undo/Redo, Zoom, Save, Download (PNG individual + ZIP)
 - CarouselPreview com edição inline
 - Geração de imagem com IA integrada no `PropertiesPanel`

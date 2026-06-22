@@ -40,7 +40,7 @@ export const setupConfig: SetupConfig = {
       placeholder: 'sk-...',
       inputType: 'password',
       docsUrl: 'https://platform.openai.com/api-keys',
-      helpText: 'Usada para geracao de conteudo (LLM).',
+      helpText: 'Usada para OCR de posts/carrosseis (GPT-4o Vision) e transcricao de Reels (Whisper).',
       validate: async (value) =>
         validateWithFormat(value, 'sk-', 20),
     },
@@ -50,7 +50,7 @@ export const setupConfig: SetupConfig = {
       placeholder: 'AIza... ou AQ....',
       inputType: 'password',
       docsUrl: 'https://aistudio.google.com/app/apikey',
-      helpText: 'Usada para geracao de imagens (Gemini Imagen).',
+      helpText: 'Usada para geracao de imagens (Imagen) e transcricao de videos do YouTube/Shorts (Gemini).',
       validate: async (value) =>
         // Google AI Studio emite chaves no formato classico (AIza...) e no formato novo (AQ....).
         validateWithFormat(value, ['AIza', 'AQ.'], 20),
@@ -64,19 +64,6 @@ export const setupConfig: SetupConfig = {
       helpText: 'Usado para extrair posts/carrosseis/reels do Instagram.',
       validate: async (value) =>
         validateWithFormat(value, 'apify_api_', 20),
-    },
-    {
-      key: 'supadata_api_key',
-      label: 'Supadata API Key',
-      placeholder: 'sd_...',
-      inputType: 'password',
-      docsUrl: 'https://supadata.ai/',
-      helpText: 'Usada para transcricao de videos do YouTube/Shorts.',
-      validate: async (value) => {
-        if (!value.trim()) return { ok: false, message: 'Informe um valor.' };
-        if (value.length < 16) return { ok: false, message: 'Token muito curto.' };
-        return { ok: true };
-      },
     },
   ],
 };

@@ -10,26 +10,70 @@ function detectTypeFromUrl(url: string): TranscribeType | null {
   return null;
 }
 
-// Supadata fala com YouTube direto pela URL e retorna a transcricao pronta.
-// Edge Functions Deno nao conseguem extrair audio do YouTube (sem yt-dlp), entao
-// delegamos esse passo para um servico que faz isso server-side.
-async function transcribeYoutubeViaSupadata(
+const TRANSCRIBE_PROMPT = `Transcreva integralmente o conteudo falado deste video em portugues do Brasil.
+Regras:
+- Retorne APENAS o texto transcrito, sem cabecalhos, sem timestamps, sem markdown.
+- Preserve a ordem original das ideias.
+- Se o video estiver em outro idioma, traduza para portugues do Brasil mantendo o sentido.
+- Ignore sons de fundo, musicas e ruidos — foque na fala.`;
+
+const YOUTUBE_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+
+// Gemini transcreve o YouTube nativamente: passamos a URL como fileData.fileUri e o
+// modelo le o video direto da fonte — sem precisar baixar/extrair audio na Edge Function.
+async function transcribeYoutubeWithGemini(
   apiKey: string,
-  url: string,
-): Promise<{ text: string; language: string }> {
-  const endpoint = `https://api.supadata.ai/v1/youtube/transcript?url=${encodeURIComponent(url)}&text=true`;
-  const res = await fetch(endpoint, {
-    headers: { 'x-api-key': apiKey },
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Supadata ${res.status}: ${body.slice(0, 200)}`);
+  youtubeUrl: string,
+): Promise<{ text: string; model: string }> {
+  let lastError = '';
+
+  for (const model of YOUTUBE_MODELS) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { fileData: { fileUri: youtubeUrl } },
+                  { text: TRANSCRIBE_PROMPT },
+                ],
+              },
+            ],
+          }),
+        },
+      );
+
+      if (!res.ok) {
+        const body = await res.text();
+        lastError = `${model}: HTTP ${res.status} ${body.slice(0, 400)}`;
+        continue;
+      }
+
+      const data = await res.json();
+      const parts = data?.candidates?.[0]?.content?.parts ?? [];
+      const text = parts
+        .map((p: { text?: string }) => p.text ?? '')
+        .join('')
+        .trim();
+
+      if (!text) {
+        lastError = `${model}: resposta vazia`;
+        continue;
+      }
+      return { text, model };
+    } catch (err) {
+      lastError = `${model}: ${String(err)}`;
+    }
   }
-  const json = await res.json() as { content?: string; lang?: string };
-  return {
-    text: (json.content ?? '').trim(),
-    language: json.lang ?? 'pt',
-  };
+
+  throw new Error(lastError || 'Falha desconhecida ao transcrever via Gemini');
 }
 
 // Whisper aceita uma URL de video direto (CDN do Instagram) — baixamos como blob
@@ -150,19 +194,21 @@ Deno.serve(async (req: Request) => {
     }
 
     // YouTube
-    const supadataKey = await getCredential('supadata_api_key') ?? '';
-    if (!supadataKey) {
+    const googleKey = await getCredential('google_api_key')
+      ?? await getCredential('gemini_imagen_api_key')
+      ?? '';
+    if (!googleKey) {
       return new Response(
         JSON.stringify({
-          error: 'Credencial Supadata nao configurada. Acesse Configuracoes → Credenciais.',
+          error: 'Credencial Google AI nao configurada. Acesse Configuracoes → Credenciais.',
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
     try {
-      const result = await transcribeYoutubeViaSupadata(supadataKey, url);
+      const result = await transcribeYoutubeWithGemini(googleKey, url);
       return new Response(
-        JSON.stringify({ ...result, source: 'supadata' }),
+        JSON.stringify({ ...result, source: 'gemini' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     } catch (err) {

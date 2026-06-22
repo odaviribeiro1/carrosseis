@@ -79,7 +79,7 @@ O modelo e **white-label com licenciamento**:
 | **Deploy** | Vercel | Deploy de SPA estatico; dominio customizado por cliente; CDN global; headers de seguranca via vercel.json |
 | **Exportacao** | Client-side via Konva.js | `stage.toDataURL()` / `stage.toBlob()` em canvas offscreen 1080x1350. Elimina necessidade de Puppeteer server-side. Fontes ja carregadas no browser via FontFace API |
 | **Filas/Jobs** | pg_cron + pg_net | pg_cron agenda execucoes SQL; pg_net (extensao HTTP do Postgres) invoca Edge Functions via HTTP. Combinacao permite agendamento nativo sem infraestrutura adicional |
-| **Transcricao** | Supadata API / Whisper API | Supadata para YouTube (rapido e barato); Whisper como fallback para Reels e videos diretos |
+| **Transcricao** | Gemini (Google AI) / Whisper API | Gemini transcreve YouTube/Shorts nativamente via `fileData.fileUri` (usa a Google API key); Whisper transcreve o audio dos Reels do Instagram |
 | **Geracao de imagens** | Gemini Imagen (Google AI) | Geracao de imagens por IA diretamente no editor; usuario insere propria API key |
 | **LLM** | Multi-provider (OpenAI, Anthropic, Google, Groq) | Adapter pattern permite adicionar novos providers sem alterar codigo existente |
 | **Icones** | Lucide React | Biblioteca open-source com 1000+ icones consistentes; tree-shakeable |
@@ -139,7 +139,7 @@ O modelo e **white-label com licenciamento**:
                     +-----------v-----------v---------+              
                     |      PROVIDERS EXTERNOS          |              
                     |  OpenAI | Anthropic | Google     |              
-                    |  Groq   | Supadata  | Meta API   |              
+                    |  Groq   | Gemini    | Meta API   |              
                     +-----------------------------------------+              
 ```
 
@@ -225,7 +225,8 @@ O Wizard guia o usuario pelo setup completo da plataforma. Cada step salva progr
 - Escolha do LLM provider (dropdown: OpenAI, Anthropic, Google, Groq).
 - Insercao da API key do LLM.
 - Insercao da API key do Gemini Imagen (geracao de imagens).
-- Insercao da API key da Supadata (transcricao de videos).
+- Insercao da API key da OpenAI (OCR de posts/carrosseis e transcricao de Reels via Whisper).
+- A transcricao de YouTube/Shorts reaproveita a Google API key (Gemini) — sem credencial adicional.
 - Todas as keys armazenadas encrypted via Supabase Vault.
 
 #### Step 6 - Conectar Instagram
@@ -251,7 +252,7 @@ O fluxo completo de geracao e o seguinte:
 
 1. **Escolha da fonte de conteudo**: texto livre, URL de blog, link YouTube, link Reels, link Twitter/X thread.
 
-2. **Extracao automatica** (se URL de video): sistema chama Edge Function `transcribe`, que usa Supadata API (YouTube) ou Whisper API (Reels/videos diretos) para extrair a transcricao.
+2. **Extracao automatica** (se URL de video): sistema chama Edge Function `transcribe`, que usa Gemini (YouTube/Shorts, nativo via `fileData.fileUri`) ou Whisper API (Reels do Instagram) para extrair a transcricao.
 
 3. **Configuracao do carrossel**: tema, tom de voz (padrao do Brand Kit ou customizado), publico-alvo, quantidade de slides.
 
@@ -517,7 +518,6 @@ Configuracao de IA por workspace. API keys encrypted via Vault.
 | llm_api_key | text | Chave da API LLM (encrypted) |
 | llm_model | text | Modelo especifico (ex: 'gpt-4o') |
 | imagen_api_key | text | Chave da API Gemini Imagen (encrypted) |
-| supadata_api_key | text | Chave da API Supadata (encrypted) |
 
 #### `templates` e `template_slide_variants`
 
@@ -574,7 +574,7 @@ $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 - **Supabase Vault** (baseado em pgsodium) e usado para criptografia de todos os secrets.
 - Vault gerencia chaves de criptografia separadamente dos dados, eliminando o anti-pattern de armazenar chave junto dos dados criptografados.
-- Secrets criptografados: API keys LLM, API key Gemini Imagen, API key Supadata, Meta App Secret, access tokens OAuth.
+- Secrets criptografados: API keys LLM, API key Gemini Imagen, API key OpenAI (OCR/Whisper), Apify token, Meta App Secret, access tokens OAuth.
 
 ---
 
@@ -607,7 +607,7 @@ Todas as Edge Functions seguem o mesmo protocolo de seguranca:
 | `bootstrap` | Executar migrations | Usa Service Role Key nativa; migrations 100% estaticas |
 | `generate-content` | Proxy LLM | API key descriptografada server-side; rate limit |
 | `generate-image` | Proxy Gemini Imagen | Mesma logica de seguranca |
-| `transcribe` | Proxy Supadata/Whisper | API key server-side |
+| `transcribe` | Proxy Gemini (YouTube) / Whisper (Reels) | API key server-side |
 | `meta-oauth` | Token exchange OAuth | App Secret server-side; state parameter CSRF |
 | `schedule-post` | Publicacao Instagram | Access token descriptografado server-side |
 | `webhook-meta` | Receber webhooks Meta | Validacao de assinatura |
@@ -722,7 +722,7 @@ CORS: cada cliente configura no Supabase Dashboard com dominio exato (nunca wild
 
 1. Config de IA por workspace (provider picker, API key storage via Vault).
 2. Edge Function `generate-content` (proxy LLM multi-provider com adapter pattern).
-3. Edge Function `transcribe` (proxy Supadata/Whisper).
+3. Edge Function `transcribe` (proxy Gemini para YouTube / Whisper para Reels).
 4. Edge Function `generate-image` (proxy Gemini Imagen).
 5. Geracao de conteudo: frontend -> Edge Function -> LLM -> JSON de slides.
 6. Extracao de transcricao (YouTube, Reels, Twitter).
