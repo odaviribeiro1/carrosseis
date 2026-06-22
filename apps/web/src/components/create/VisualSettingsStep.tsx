@@ -16,7 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getSupabaseClient } from '@/lib/supabase';
 import type { VisualSettings } from '@/types/carousel';
 import { toast } from 'sonner';
 
@@ -70,41 +69,57 @@ export function VisualSettingsStep({ initial, onBack, onGenerate, isGenerating }
     updateField('colorPalette', newColors);
   }
 
-  async function handleUpload(file: File) {
-    if (!file) return;
+  const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
+  const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
+  function handleUploadFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const list = Array.from(files);
     setUploading(true);
-    try {
-      const client = getSupabaseClient();
-      if (!client) throw new Error('Supabase nao configurado');
-
-      const { data: { user } } = await client.auth.getUser();
-      if (!user) throw new Error('Nao autenticado');
-
-      const ext = file.name.split('.').pop();
-      const path = `reference-images/${user.id}/${Date.now()}.${ext}`;
-
-      const { error: uploadError } = await client.storage
-        .from('images')
-        .upload(path, file, { upsert: false });
-
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = await client.storage
-        .from('images')
-        .getPublicUrl(path);
-
-      updateField('referenceImageUrl', urlData.publicUrl);
-      toast.success('Imagem de referencia enviada');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao enviar imagem');
-    } finally {
-      setUploading(false);
+    let pending = list.length;
+    const dataUrls: string[] = [];
+    const finish = () => {
+      pending -= 1;
+      if (pending === 0) {
+        if (dataUrls.length > 0) {
+          setSettings((prev) => ({
+            ...prev,
+            referenceImages: [...prev.referenceImages, ...dataUrls],
+          }));
+        }
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    for (const file of list) {
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        toast.error(`"${file.name}": formato nao suportado (use PNG, JPG ou WEBP).`);
+        finish();
+        continue;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        toast.error(`"${file.name}": imagem muito grande (max 10MB).`);
+        finish();
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        dataUrls.push(reader.result as string);
+        finish();
+      };
+      reader.onerror = () => {
+        toast.error(`Erro ao ler "${file.name}".`);
+        finish();
+      };
+      reader.readAsDataURL(file);
     }
   }
 
-  function removeReferenceImage() {
-    updateField('referenceImageUrl', null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+  function removeReferenceImage(index: number) {
+    setSettings((prev) => ({
+      ...prev,
+      referenceImages: prev.referenceImages.filter((_, i) => i !== index),
+    }));
   }
 
   return (
@@ -201,48 +216,52 @@ export function VisualSettingsStep({ initial, onBack, onGenerate, isGenerating }
           </div>
         </div>
 
-        {/* Reference Image */}
+        {/* Reference Images (multiplas) */}
         <div className="space-y-2">
-          <Label>Imagem de Referencia (opcional)</Label>
-          {settings.referenceImageUrl ? (
-            <div className="relative inline-block">
-              <img
-                src={settings.referenceImageUrl}
-                alt="Referencia"
-                className="h-24 w-24 rounded-lg border border-[rgba(59,130,246,0.2)] object-cover"
-              />
-              <button
-                type="button"
-                onClick={removeReferenceImage}
-                className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ) : (
+          <Label>Imagens de Referencia (opcional)</Label>
+          <div className="flex flex-wrap gap-2">
+            {settings.referenceImages.map((img, i) => (
+              <div key={i} className="relative">
+                <img
+                  src={img}
+                  alt={`Referencia ${i + 1}`}
+                  className="h-24 w-24 rounded-lg border border-[rgba(59,130,246,0.2)] object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeReferenceImage(i)}
+                  className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-[rgba(59,130,246,0.2)] p-6 transition-colors hover:border-[rgba(59,130,246,0.4)]"
+              className="flex h-24 w-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-[rgba(59,130,246,0.2)] text-center text-[10px] text-[#94A3B8] transition-colors hover:border-[rgba(59,130,246,0.4)]"
             >
               {uploading ? (
-                <Loader2 className="h-6 w-6 animate-spin text-[#94A3B8]" />
+                <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
-                <div className="flex flex-col items-center gap-1 text-xs text-[#94A3B8]">
+                <>
                   <Upload className="h-5 w-5" />
-                  <span>Clique para enviar imagem de referencia</span>
-                </div>
+                  <span>Adicionar</span>
+                </>
               )}
             </div>
+          </div>
+          {settings.referenceImages.length > 0 && (
+            <p className="text-[10px] text-[#94A3B8]">
+              {settings.referenceImages.length} imagem(ns) de referencia. Usadas como inspiracao na geracao.
+            </p>
           )}
           <input
             ref={fileInputRef}
             type="file"
             accept="image/png,image/jpeg,image/webp"
+            multiple
             className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleUpload(file);
-            }}
+            onChange={(e) => handleUploadFiles(e.target.files)}
           />
         </div>
 

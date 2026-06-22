@@ -35,31 +35,41 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) return json({ error: 'Nao autenticado' }, 401);
 
-    const { slide_id, prompt, reference_image } = await req.json();
+    const { slide_id, prompt, reference_image, reference_images } = await req.json();
     if (!slide_id) return json({ error: 'slide_id e obrigatorio' }, 400);
     if (!prompt || !String(prompt).trim()) return json({ error: 'Prompt e obrigatorio' }, 400);
 
-    // Imagem de referencia opcional (data URL, URL http ou base64 puro) -> inlineData.
-    let referencePart: { inlineData: { mimeType: string; data: string } } | null = null;
-    if (reference_image && typeof reference_image === 'string') {
-      try {
-        const dataUrl = reference_image.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
-        if (dataUrl) {
-          referencePart = { inlineData: { mimeType: dataUrl[1], data: dataUrl[2] } };
-        } else if (/^https?:\/\//.test(reference_image)) {
-          const imgResp = await fetch(reference_image);
-          if (!imgResp.ok) throw new Error(`status ${imgResp.status}`);
-          const mimeType = imgResp.headers.get('content-type') || 'image/png';
-          const buf = new Uint8Array(await imgResp.arrayBuffer());
-          let bin = '';
-          for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
-          referencePart = { inlineData: { mimeType, data: btoa(bin) } };
-        } else {
-          referencePart = { inlineData: { mimeType: 'image/png', data: reference_image } };
-        }
-      } catch (err) {
-        return json({ error: `Imagem de referencia invalida: ${String(err)}` }, 400);
+    // Converte uma referencia (data URL, URL http ou base64 puro) em inlineData.
+    async function toInlinePart(
+      ref: string,
+    ): Promise<{ inlineData: { mimeType: string; data: string } }> {
+      const dataUrl = ref.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+      if (dataUrl) {
+        return { inlineData: { mimeType: dataUrl[1], data: dataUrl[2] } };
       }
+      if (/^https?:\/\//.test(ref)) {
+        const imgResp = await fetch(ref);
+        if (!imgResp.ok) throw new Error(`status ${imgResp.status}`);
+        const mimeType = imgResp.headers.get('content-type') || 'image/png';
+        const buf = new Uint8Array(await imgResp.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+        return { inlineData: { mimeType, data: btoa(bin) } };
+      }
+      return { inlineData: { mimeType: 'image/png', data: ref } };
+    }
+
+    // Aceita uma referencia unica (refino) e/ou um array (aspectos visuais).
+    const refs: string[] = [];
+    if (reference_image && typeof reference_image === 'string') refs.push(reference_image);
+    if (Array.isArray(reference_images)) {
+      for (const r of reference_images) if (typeof r === 'string' && r) refs.push(r);
+    }
+    const referenceParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+    try {
+      for (const ref of refs) referenceParts.push(await toInlinePart(ref));
+    } catch (err) {
+      return json({ error: `Imagem de referencia invalida: ${String(err)}` }, 400);
     }
 
     const apiKey =
@@ -99,9 +109,7 @@ Deno.serve(async (req: Request) => {
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
             body: JSON.stringify({
               contents: [{
-                parts: referencePart
-                  ? [{ text: String(prompt) }, referencePart]
-                  : [{ text: String(prompt) }],
+                parts: [{ text: String(prompt) }, ...referenceParts],
               }],
               generationConfig: {
                 responseModalities: ['TEXT', 'IMAGE'],

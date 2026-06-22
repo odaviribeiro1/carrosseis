@@ -104,7 +104,7 @@ const defaultVisualSettings: VisualSettings = {
   imageStyle: 'realista',
   colorPalette: ['#1E3A5F', '#3B82F6', '#94A3B8', '#F8FAFC', '#0F1223'],
   aspectRatio: '4:5',
-  referenceImageUrl: null,
+  referenceImages: [],
   imagePrompt: '',
   resolution: 'standard',
 };
@@ -276,7 +276,7 @@ export function CreateCarouselPage() {
             imageStyle: (vs.image_style as string) ?? defaultVisualSettings.imageStyle,
             colorPalette: (vs.color_palette as string[]) ?? defaultVisualSettings.colorPalette,
             aspectRatio: (vs.aspect_ratio as string) ?? defaultVisualSettings.aspectRatio,
-            referenceImageUrl: (vs.reference_image_url as string | null) ?? null,
+            referenceImages: [],
             imagePrompt: (vs.image_prompt as string) ?? '',
             resolution: (vs.resolution as string) ?? defaultVisualSettings.resolution,
           });
@@ -594,14 +594,19 @@ export function CreateCarouselPage() {
 
   // Compila o prompt do Nano Banana para cada slide (conteudo + design spec + visual).
   function buildSlidePrompts(): string[] {
-    return generatedSlides.map((slide, i) =>
-      buildSlidePrompt({
-        content: slide,
-        designSpec: slideSpecs[i] ?? defaultDesignSpec(slide.type),
-        visual: visualSettings,
-        slideIndex: i,
-        slideTotal: generatedSlides.length,
-      }),
+    const refNote =
+      visualSettings.referenceImages.length > 0
+        ? '\nUse as imagens de referencia fornecidas como inspiracao visual (estilo, paleta, composicao), sem copiar textos delas.'
+        : '';
+    return generatedSlides.map(
+      (slide, i) =>
+        buildSlidePrompt({
+          content: slide,
+          designSpec: slideSpecs[i] ?? defaultDesignSpec(slide.type),
+          visual: visualSettings,
+          slideIndex: i,
+          slideTotal: generatedSlides.length,
+        }) + refNote,
     );
   }
 
@@ -683,7 +688,7 @@ export function CreateCarouselPage() {
             image_style: parsedVisual.data.imageStyle,
             color_palette: parsedVisual.data.colorPalette,
             aspect_ratio: parsedVisual.data.aspectRatio,
-            reference_image_url: parsedVisual.data.referenceImageUrl,
+            reference_image_url: null,
             image_prompt: parsedVisual.data.imagePrompt,
             resolution: parsedVisual.data.resolution,
           },
@@ -748,7 +753,11 @@ export function CreateCarouselPage() {
           if (!slideId) return;
           try {
             const { data, error } = await client.functions.invoke('generate-slide-image', {
-              body: { slide_id: slideId, prompt: prompts[i] },
+              body: {
+                slide_id: slideId,
+                prompt: prompts[i],
+                reference_images: visualSettings.referenceImages,
+              },
             });
             if (error) throw error;
             const result = data as { error?: string };
