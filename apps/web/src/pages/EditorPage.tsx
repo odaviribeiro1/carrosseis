@@ -292,6 +292,14 @@ export function EditorPage() {
     setDownloading(true);
     try {
       await downloadImagesAsZip(images, 'carrossel');
+      // Marca o carrossel como baixado (aba/badge "Baixado" no Dashboard).
+      const client = getSupabaseClient();
+      if (client && id) {
+        await client
+          .from('carousels')
+          .update({ downloaded_at: new Date().toISOString() })
+          .eq('id', id);
+      }
       toast.success('Download iniciado');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao baixar');

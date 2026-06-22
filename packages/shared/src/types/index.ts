@@ -38,6 +38,7 @@ export interface Carousel {
     tone?: string;
   } | null;
   version: number;
+  downloaded_at: string | null;
   created_at: string;
   updated_at: string;
 }

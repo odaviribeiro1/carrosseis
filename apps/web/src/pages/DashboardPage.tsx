@@ -101,6 +101,12 @@ export function DashboardPage() {
         .toLowerCase() || 'carrossel';
 
       await downloadImagesAsZip(images, safeName);
+      // Marca como baixado (alimenta a aba/badge "Baixado").
+      await client
+        .from('carousels')
+        .update({ downloaded_at: new Date().toISOString() })
+        .eq('id', carousel.id);
+      void queryClient.invalidateQueries({ queryKey: ['carousels'] });
       toast.success('Download iniciado');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao baixar carrossel');
@@ -109,11 +115,16 @@ export function DashboardPage() {
     }
   }
 
-  const filtered = carousels?.filter(
-    (c) =>
-      (statusFilter === 'all' || c.status === statusFilter) &&
-      (!search || c.title.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filtered = carousels?.filter((c) => {
+    const matchesTab =
+      statusFilter === 'all'
+        ? true
+        : statusFilter === 'downloaded'
+          ? Boolean(c.downloaded_at)
+          : c.status === statusFilter;
+    const matchesSearch = !search || c.title.toLowerCase().includes(search.toLowerCase());
+    return matchesTab && matchesSearch;
+  });
 
   const statusLabels: Record<CarouselStatus, string> = {
     draft: 'Rascunho',
@@ -150,6 +161,7 @@ export function DashboardPage() {
               <TabsTrigger value="all">Todos</TabsTrigger>
               <TabsTrigger value="draft">Rascunho</TabsTrigger>
               <TabsTrigger value="ready">Pronto</TabsTrigger>
+              <TabsTrigger value="downloaded">Baixado</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -167,13 +179,20 @@ export function DashboardPage() {
                     <CardTitle className="text-sm line-clamp-1">
                       {carousel.title}
                     </CardTitle>
-                    <span
-                      className={`rounded-lg px-1.5 py-0.5 text-[10px] font-medium ${
-                        statusColors[carousel.status]
-                      }`}
-                    >
-                      {statusLabels[carousel.status]}
-                    </span>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                      {carousel.downloaded_at && (
+                        <span className="rounded-lg border border-[#3B82F6]/20 bg-[#3B82F6]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#60A5FA]">
+                          Baixado
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-lg px-1.5 py-0.5 text-[10px] font-medium ${
+                          statusColors[carousel.status]
+                        }`}
+                      >
+                        {statusLabels[carousel.status]}
+                      </span>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
