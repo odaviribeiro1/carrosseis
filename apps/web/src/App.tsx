@@ -18,11 +18,8 @@ const CreateCarouselPage = React.lazy(() =>
 const EditorPage = React.lazy(() =>
   import('@/pages/EditorPage').then((m) => ({ default: m.EditorPage }))
 );
-const MembersPage = React.lazy(() =>
-  import('@/pages/MembersPage').then((m) => ({ default: m.MembersPage }))
-);
-const CredentialsSettingsPage = React.lazy(() =>
-  import('@/pages/settings/credentials').then((m) => ({ default: m.CredentialsSettingsPage }))
+const SettingsPage = React.lazy(() =>
+  import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage }))
 );
 
 const SuspenseFallback = (
@@ -56,9 +53,9 @@ export function App() {
                         <Routes>
                           <Route path="/" element={<DashboardPage />} />
                           <Route path="/create" element={<CreateCarouselPage />} />
-                          <Route path="/settings/members" element={<MembersPage />} />
-                          <Route path="/settings/credentials" element={<CredentialsSettingsPage />} />
-                          <Route path="/settings" element={<Navigate to="/settings/credentials" replace />} />
+                          <Route path="/settings" element={<SettingsPage />} />
+                          <Route path="/settings/members" element={<Navigate to="/settings?tab=members" replace />} />
+                          <Route path="/settings/credentials" element={<Navigate to="/settings?tab=credentials" replace />} />
                           <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                       </AppShell>

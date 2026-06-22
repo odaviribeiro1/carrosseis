@@ -6,6 +6,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Card,
   CardContent,
   CardDescription,
@@ -35,13 +45,14 @@ const roleLabels: Record<UserRole, string> = {
   member: 'Membro',
 };
 
-export function MembersPage() {
+export function MembersPanel() {
   const { user } = useAuthStore();
   const [members, setMembers] = useState<Member[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
   const [creatingInvite, setCreatingInvite] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<string | null>(null);
 
   const loadMembers = useCallback(async () => {
     const client = getSupabaseClient();
@@ -142,14 +153,11 @@ export function MembersPage() {
   }
 
   return (
-    <div className="p-6">
+    <>
       <div className="mx-auto max-w-2xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[#F8FAFC]">Membros</h1>
-          <p className="text-sm text-[#94A3B8]">
-            Self-signup esta fechado. Apenas o owner pode convidar novos membros.
-          </p>
-        </div>
+        <p className="text-sm text-[#94A3B8]">
+          Self-signup esta fechado. Apenas o owner pode convidar novos membros.
+        </p>
 
         <RoleGuard minRole="owner">
           <Card>
@@ -264,9 +272,9 @@ export function MembersPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => void removeMember(member.user_id)}
+                            onClick={() => setMemberToRemove(member.user_id)}
                           >
-                            <Trash2 className="h-4 w-4 text-red-400" />
+                            <Trash2 className="h-4 w-4 text-[#EF4444]" />
                           </Button>
                         </RoleGuard>
                       )}
@@ -278,6 +286,34 @@ export function MembersPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+
+      <AlertDialog
+        open={!!memberToRemove}
+        onOpenChange={(open) => { if (!open) setMemberToRemove(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover membro</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover este membro? Ele perderá o acesso à
+              plataforma. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (memberToRemove) {
+                  void removeMember(memberToRemove);
+                  setMemberToRemove(null);
+                }
+              }}
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

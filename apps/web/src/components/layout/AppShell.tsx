@@ -4,8 +4,7 @@ import {
   LayoutDashboard,
   PlusCircle,
   LogOut,
-  Users,
-  KeyRound,
+  Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
@@ -21,8 +20,7 @@ const baseNavItems = [
   { href: '/create', label: 'Novo Carrossel', icon: PlusCircle },
 ];
 
-const ownerNavItem = { href: '/settings/members', label: 'Membros', icon: Users };
-const credentialsNavItem = { href: '/settings/credentials', label: 'Credenciais', icon: KeyRound };
+const settingsNavItem = { href: '/settings', label: 'Configuracoes', icon: Settings };
 
 export function AppShell({ children }: AppShellProps) {
   const { signOut } = useAuth();
@@ -30,7 +28,7 @@ export function AppShell({ children }: AppShellProps) {
   useRole(); // hydrate role store
   const { role } = useRoleStore();
   const navItems = role === 'owner'
-    ? [...baseNavItems, ownerNavItem, credentialsNavItem]
+    ? [...baseNavItems, settingsNavItem]
     : [...baseNavItems];
 
   return (
