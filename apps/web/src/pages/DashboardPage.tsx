@@ -34,23 +34,21 @@ export function DashboardPage() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
+  // Busca TODOS os carrosseis num unico cache; o filtro de status e aplicado no client.
+  // Evita caches por aba (que faziam "Todos" mostrar lista desatualizada vs "Rascunho").
   const { data: carousels, isLoading } = useQuery({
-    queryKey: ['carousels', statusFilter],
+    queryKey: ['carousels'],
     queryFn: async () => {
       const client = getSupabaseClient();
       if (!client) return [];
-      let query = client
+      const { data } = await client
         .from('carousels')
         .select('*')
         .order('updated_at', { ascending: false });
-
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
-
-      const { data } = await query;
       return (data ?? []) as Carousel[];
     },
+    // Revalida ao montar: lista sempre fresca ao voltar de criar/salvar um carrossel.
+    refetchOnMount: 'always',
   });
 
   const deleteMutation = useMutation({
@@ -112,7 +110,9 @@ export function DashboardPage() {
   }
 
   const filtered = carousels?.filter(
-    (c) => !search || c.title.toLowerCase().includes(search.toLowerCase())
+    (c) =>
+      (statusFilter === 'all' || c.status === statusFilter) &&
+      (!search || c.title.toLowerCase().includes(search.toLowerCase()))
   );
 
   const statusLabels: Record<CarouselStatus, string> = {
