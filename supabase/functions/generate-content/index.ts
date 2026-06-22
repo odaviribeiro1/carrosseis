@@ -28,6 +28,21 @@ const DEFAULT_MODELS: Record<string, string> = {
   groq: 'llama-3.3-70b-versatile',
 };
 
+function buildTopicPrompt(content: string): string {
+  return `Voce e um especialista em conteudo para redes sociais.
+Com base no conteudo abaixo, gere um tema/titulo curto, claro e atrativo para um carrossel.
+
+<user_content>
+${content}
+</user_content>
+
+Regras:
+- Responda APENAS com o tema, em uma unica linha
+- Maximo 60 caracteres
+- Sem aspas, sem prefixos como "Tema:", sem texto adicional
+- Use o idioma portugues do Brasil`;
+}
+
 function buildPrompt(params: {
   content: string;
   topic: string;
@@ -113,6 +128,7 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json();
     const {
+      mode = 'slides',
       topic = '',
       content = '',
       audience = '',
@@ -161,6 +177,24 @@ Deno.serve(async (req: Request) => {
     }
 
     const adapter = adapterFactory();
+
+    // Modo 'topic': sugere um tema curto a partir do conteudo e retorna { topic }.
+    if (mode === 'topic') {
+      const topicResult = await adapter.generateContent(buildTopicPrompt(content || topic), {
+        apiKey,
+        model,
+        maxTokens: 60,
+      });
+      const suggestedTopic = topicResult.content
+        .trim()
+        .replace(/^["']|["']$/g, '')
+        .split('\n')[0]
+        .slice(0, 80);
+      return new Response(JSON.stringify({ topic: suggestedTopic }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const prompt = buildPrompt({
       content,
       topic,

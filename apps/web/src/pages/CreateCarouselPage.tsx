@@ -27,13 +27,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { CarouselPreview } from '@/components/preview/CarouselPreview';
 import { VisualSettingsStep } from '@/components/create/VisualSettingsStep';
 import { getSupabaseClient } from '@/lib/supabase';
@@ -47,7 +40,6 @@ const configSchema = z.object({
   toneOfVoice: z.string().optional(),
   audience: z.string().optional(),
   slideCount: z.number().min(3).max(15),
-  category: z.enum(['educacional', 'vendas', 'storytelling', 'antes_depois', 'lista']),
 });
 
 type ConfigFormValues = z.infer<typeof configSchema>;
@@ -129,6 +121,88 @@ function buildContentForLLM(params: {
   return parts.join('\n');
 }
 
+// Monta o prompt da imagem de fundo de um slide a partir das configuracoes visuais.
+function buildSlideImagePrompt(slide: SlideContent, visual: VisualSettings): string {
+  const palette = visual.colorPalette.join(', ');
+  const base = visual.imagePrompt?.trim();
+  return [
+    'Crie uma imagem de FUNDO para um slide de carrossel de Instagram (proporcao 4:5, 1080x1350).',
+    `Estilo visual: ${visual.imageStyle}.`,
+    `Paleta de cores predominante: ${palette}.`,
+    base ? `Direcao de arte: ${base}.` : '',
+    `Tema do slide: ${slide.headline}. ${slide.body}`,
+    'IMPORTANTE: a imagem deve ser APENAS o fundo visual, SEM nenhum texto, palavra, letra ou logotipo. Mantenha areas com espaco limpo para sobrepor texto depois.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+// Monta o canvas_json (Konva) de um slide; com imagem de fundo + overlay quando houver.
+function buildSlideCanvasJson(slide: SlideContent, imageUrl: string | null) {
+  const hasImage = Boolean(imageUrl);
+  const elements: Array<{ type: string; name: string; attrs: Record<string, unknown> }> = [];
+
+  if (hasImage) {
+    elements.push({
+      type: 'Image',
+      name: 'Fundo IA',
+      attrs: { x: 0, y: 0, width: 1080, height: 1350, src: imageUrl, draggable: false },
+    });
+    // Overlay escuro para garantir legibilidade do texto sobre a imagem.
+    elements.push({
+      type: 'Rect',
+      name: 'Overlay',
+      attrs: { x: 0, y: 0, width: 1080, height: 1350, fill: '#000000', opacity: 0.4 },
+    });
+  } else {
+    elements.push({
+      type: 'Rect',
+      name: 'Fundo',
+      attrs: { x: 0, y: 0, width: 1080, height: 1350, fill: '#ffffff' },
+    });
+  }
+
+  const titleFill = hasImage ? '#ffffff' : '#1f2937';
+  const bodyFill = hasImage ? '#e5e7eb' : '#4b5563';
+  const textShadow = hasImage
+    ? { shadowColor: '#000000', shadowBlur: 12, shadowOpacity: 0.6 }
+    : {};
+
+  elements.push({
+    type: 'Text',
+    name: 'Titulo',
+    attrs: {
+      x: 60,
+      y: slide.type === 'capa' ? 400 : 100,
+      text: slide.headline,
+      fontSize: slide.type === 'capa' ? 64 : 48,
+      fontStyle: 'bold',
+      fill: titleFill,
+      width: 960,
+      align: 'center',
+      ...textShadow,
+    },
+  });
+
+  elements.push({
+    type: 'Text',
+    name: 'Corpo',
+    attrs: {
+      x: 60,
+      y: slide.type === 'capa' ? 540 : 250,
+      text: slide.body,
+      fontSize: 28,
+      fill: bodyFill,
+      width: 960,
+      align: 'center',
+      lineHeight: 1.6,
+      ...textShadow,
+    },
+  });
+
+  return { width: 1080, height: 1350, elements };
+}
+
 export function CreateCarouselPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -155,7 +229,10 @@ export function CreateCarouselPage() {
   const [postOcrText, setPostOcrText] = useState('');
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSuggestingTopic, setIsSuggestingTopic] = useState(false);
   const [isAccepting, setIsAccepting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [acceptProgress, setAcceptProgress] = useState('');
   const [generatedSlides, setGeneratedSlides] = useState<SlideContent[]>([]);
   const [configValues, setConfigValues] = useState<ConfigFormValues | null>(null);
   const [visualSettings, setVisualSettings] = useState<VisualSettings>(defaultVisualSettings);
@@ -173,7 +250,6 @@ export function CreateCarouselPage() {
       toneOfVoice: '',
       audience: '',
       slideCount: 5,
-      category: 'educacional',
     },
   });
 
@@ -337,6 +413,34 @@ export function CreateCarouselPage() {
     return false;
   }
 
+  // Sugere automaticamente um tema a partir do conteudo extraido via IA.
+  async function suggestTopic() {
+    const finalContent = buildFinalContent().trim();
+    if (!finalContent) return;
+    setIsSuggestingTopic(true);
+    try {
+      const client = getSupabaseClient();
+      if (!client) throw new Error('Supabase nao configurado');
+      const { data, error } = await client.functions.invoke('generate-content', {
+        body: { mode: 'topic', content: finalContent },
+      });
+      if (error) throw error;
+      const suggested = (data as { topic?: string })?.topic?.trim();
+      if (suggested) setValue('topic', suggested, { shouldValidate: true });
+    } catch (err) {
+      // Sugestao e best-effort: falha nao bloqueia o usuario, que digita o tema manualmente.
+      console.error('Erro ao sugerir tema:', err);
+    } finally {
+      setIsSuggestingTopic(false);
+    }
+  }
+
+  function goToConfigStep() {
+    setStep(2);
+    // So sugere se o usuario ainda nao definiu um tema (evita sobrescrever ao voltar).
+    if (!watch('topic')?.trim()) void suggestTopic();
+  }
+
   async function generateCarousel(visual: VisualSettings) {
     if (!configValues) return;
     setIsGenerating(true);
@@ -353,7 +457,6 @@ export function CreateCarouselPage() {
           audience: configValues.audience,
           tone_of_voice: configValues.toneOfVoice,
           slide_count: configValues.slideCount,
-          category: configValues.category,
           visual_settings: visual,
         },
       });
@@ -378,11 +481,40 @@ export function CreateCarouselPage() {
     }
   }
 
-  async function acceptCarousel() {
-    // Guarda contra duplo-clique: acceptCarousel faz vários inserts e demora,
-    // então sem isto cliques repetidos criavam carrosséis duplicados.
-    if (isAccepting) return;
-    setIsAccepting(true);
+  // Gera uma imagem de fundo por slide via Nano Banana (generate-image).
+  // Retorna data URLs alinhados por indice; slide com falha recebe null (fundo branco).
+  async function generateSlideImages(
+    client: NonNullable<ReturnType<typeof getSupabaseClient>>,
+  ): Promise<Array<string | null>> {
+    const images: Array<string | null> = [];
+    for (let i = 0; i < generatedSlides.length; i++) {
+      setAcceptProgress(`Gerando imagens ${i + 1}/${generatedSlides.length}`);
+      try {
+        const { data, error } = await client.functions.invoke('generate-image', {
+          body: { prompt: buildSlideImagePrompt(generatedSlides[i], visualSettings) },
+        });
+        if (error) throw error;
+        const result = data as { image?: string; error?: string };
+        if (result?.error) throw new Error(result.error);
+        images.push(result?.image ?? null);
+      } catch (err) {
+        // Best-effort: uma falha nao impede salvar o carrossel; o slide fica com fundo branco.
+        console.error(`Erro ao gerar imagem do slide ${i + 1}:`, err);
+        images.push(null);
+      }
+    }
+    return images;
+  }
+
+  // Persiste o carrossel. Com generateImages=true gera as imagens (Aceitar);
+  // false salva apenas o texto como rascunho.
+  async function persistCarousel(opts: { generateImages: boolean }) {
+    // Guarda contra duplo-clique: faz varios inserts e demora,
+    // então sem isto cliques repetidos criavam carrosseis duplicados.
+    if (isAccepting || isSavingDraft) return;
+    if (opts.generateImages) setIsAccepting(true);
+    else setIsSavingDraft(true);
+    setAcceptProgress('');
     try {
       const client = getSupabaseClient();
       if (!client) throw new Error('Supabase nao configurado');
@@ -390,11 +522,17 @@ export function CreateCarouselPage() {
       const { data: { user } } = await client.auth.getUser();
       if (!user) throw new Error('Nao autenticado');
 
+      // Gera as imagens antes de inserir, para falhar cedo sem deixar carrossel orfao.
+      const images = opts.generateImages
+        ? await generateSlideImages(client)
+        : generatedSlides.map(() => null);
+
       const { data: carousel, error: carouselError } = await client
         .from('carousels')
         .insert({
           created_by: user.id,
           title: generatedSlides[0]?.headline ?? 'Sem titulo',
+          status: opts.generateImages ? 'ready' : 'draft',
           slide_count: generatedSlides.length,
           ai_input: {
             type: source,
@@ -424,45 +562,10 @@ export function CreateCarouselPage() {
         if (vsError) console.error('Erro ao salvar config visual:', vsError);
       }
 
-      const slides = generatedSlides.map((slide) => ({
+      const slides = generatedSlides.map((slide, i) => ({
         carousel_id: carousel.id,
         position: slide.position,
-        canvas_json: {
-          width: 1080,
-          height: 1350,
-          elements: [
-            {
-              type: 'Rect',
-              attrs: { x: 0, y: 0, width: 1080, height: 1350, fill: '#ffffff' },
-            },
-            {
-              type: 'Text',
-              attrs: {
-                x: 60,
-                y: slide.type === 'capa' ? 400 : 100,
-                text: slide.headline,
-                fontSize: slide.type === 'capa' ? 64 : 48,
-                fontStyle: 'bold',
-                fill: '#1f2937',
-                width: 960,
-                align: 'center',
-              },
-            },
-            {
-              type: 'Text',
-              attrs: {
-                x: 60,
-                y: slide.type === 'capa' ? 540 : 250,
-                text: slide.body,
-                fontSize: 28,
-                fill: '#4b5563',
-                width: 960,
-                align: 'center',
-                lineHeight: 1.6,
-              },
-            },
-          ],
-        },
+        canvas_json: buildSlideCanvasJson(slide, images[i] ?? null),
       }));
 
       const { error: slidesError } = await client
@@ -471,12 +574,27 @@ export function CreateCarouselPage() {
 
       if (slidesError) throw slidesError;
 
-      toast.success('Carrossel salvo');
-      navigate(`/editor/${carousel.id}`);
+      if (opts.generateImages) {
+        toast.success('Carrossel salvo');
+        navigate(`/editor/${carousel.id}`);
+      } else {
+        toast.success('Rascunho salvo');
+        navigate('/');
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar carrossel');
       setIsAccepting(false);
+      setIsSavingDraft(false);
+      setAcceptProgress('');
     }
+  }
+
+  function acceptCarousel() {
+    void persistCarousel({ generateImages: true });
+  }
+
+  function saveDraft() {
+    void persistCarousel({ generateImages: false });
   }
 
   const extractingLabel: Record<ContentSource, string> = {
@@ -696,7 +814,7 @@ export function CreateCarouselPage() {
               )}
 
               <Button
-                onClick={() => setStep(2)}
+                onClick={goToConfigStep}
                 className="w-full"
                 disabled={!canProceedFromStep1()}
               >
@@ -716,8 +834,21 @@ export function CreateCarouselPage() {
               <form onSubmit={handleSubmit((data) => { setConfigValues(data); setStep(3); })} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Tema / Topico</Label>
-                  <Input {...register('topic')} placeholder="Ex: 5 dicas de produtividade" />
-                  {errors.topic && <p className="text-sm text-red-400">{errors.topic.message}</p>}
+                  <div className="relative">
+                    <Input
+                      {...register('topic')}
+                      placeholder={isSuggestingTopic ? 'Gerando tema com IA...' : 'Ex: 5 dicas de produtividade'}
+                      disabled={isSuggestingTopic}
+                    />
+                    {isSuggestingTopic && (
+                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[#94A3B8]" />
+                    )}
+                  </div>
+                  {isSuggestingTopic ? (
+                    <p className="text-xs text-[#94A3B8]">Preenchendo o tema automaticamente a partir do conteudo...</p>
+                  ) : (
+                    errors.topic && <p className="text-sm text-red-400">{errors.topic.message}</p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -731,24 +862,9 @@ export function CreateCarouselPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Quantidade de Slides</Label>
-                    <Input type="number" min={3} max={15} {...register('slideCount', { valueAsNumber: true })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Categoria</Label>
-                    <Select value={watch('category')} onValueChange={(v) => setValue('category', v as ConfigFormValues['category'])}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="educacional">Educacional</SelectItem>
-                        <SelectItem value="vendas">Vendas</SelectItem>
-                        <SelectItem value="storytelling">Storytelling</SelectItem>
-                        <SelectItem value="antes_depois">Antes/Depois</SelectItem>
-                        <SelectItem value="lista">Lista</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-2">
+                  <Label>Quantidade de Slides</Label>
+                  <Input type="number" min={3} max={15} {...register('slideCount', { valueAsNumber: true })} />
                 </div>
 
                 <div className="flex gap-2">
@@ -776,7 +892,11 @@ export function CreateCarouselPage() {
         {step === 4 && (
           <CarouselPreview
             slides={generatedSlides}
-            onAccept={() => void acceptCarousel()}
+            onAccept={acceptCarousel}
+            onSaveDraft={saveDraft}
+            isAccepting={isAccepting}
+            isSavingDraft={isSavingDraft}
+            acceptProgress={acceptProgress}
             onReject={() => setStep(3)}
             onRegenerate={() => {
               setGeneratedSlides([]);

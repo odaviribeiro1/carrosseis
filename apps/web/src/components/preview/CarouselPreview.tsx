@@ -1,4 +1,4 @@
-import { Check, X, RefreshCw } from 'lucide-react';
+import { Check, X, RefreshCw, Save, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,7 +15,11 @@ interface CarouselPreviewProps {
   onAccept: () => void;
   onReject: () => void;
   onRegenerate: () => void;
+  onSaveDraft: () => void;
   onUpdateSlide?: (position: number, field: keyof SlideContent, value: string) => void;
+  isAccepting?: boolean;
+  isSavingDraft?: boolean;
+  acceptProgress?: string;
 }
 
 const typeLabels: Record<string, string> = {
@@ -30,8 +34,13 @@ export function CarouselPreview({
   onAccept,
   onReject,
   onRegenerate,
+  onSaveDraft,
   onUpdateSlide,
+  isAccepting = false,
+  isSavingDraft = false,
+  acceptProgress = '',
 }: CarouselPreviewProps) {
+  const busy = isAccepting || isSavingDraft;
   return (
     <Card>
       <CardHeader>
@@ -112,18 +121,28 @@ export function CarouselPreview({
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onReject} className="flex-1">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={onReject} className="flex-1" disabled={busy}>
             <X className="mr-2 h-4 w-4" />
             Editar Prompt
           </Button>
-          <Button variant="outline" onClick={onRegenerate} className="flex-1">
+          <Button variant="outline" onClick={onRegenerate} className="flex-1" disabled={busy}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Regenerar
           </Button>
-          <Button onClick={onAccept} className="flex-1">
-            <Check className="mr-2 h-4 w-4" />
-            Aceitar
+          <Button variant="outline" onClick={onSaveDraft} className="flex-1" disabled={busy}>
+            {isSavingDraft ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</>
+            ) : (
+              <><Save className="mr-2 h-4 w-4" />Salvar Rascunho</>
+            )}
+          </Button>
+          <Button onClick={onAccept} className="flex-1" disabled={busy}>
+            {isAccepting ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{acceptProgress || 'Gerando...'}</>
+            ) : (
+              <><Check className="mr-2 h-4 w-4" />Aceitar</>
+            )}
           </Button>
         </div>
       </CardContent>
