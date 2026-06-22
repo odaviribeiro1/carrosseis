@@ -31,7 +31,7 @@ export interface Carousel {
   template_id: string | null;
   slide_count: number;
   ai_input: {
-    type: 'url' | 'text' | 'video';
+    type: 'text' | 'ig_carousel' | 'ig_post' | 'ig_reel' | 'youtube';
     content: string;
     topic?: string;
     audience?: string;
