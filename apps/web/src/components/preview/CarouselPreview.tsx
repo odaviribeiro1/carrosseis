@@ -416,7 +416,7 @@ export function CarouselPreview({
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={onReject} className="flex-1" disabled={busy}>
             <X className="mr-2 h-4 w-4" />
-            Editar Prompt
+            Voltar
           </Button>
           <Button variant="outline" onClick={onRegenerate} className="flex-1" disabled={busy}>
             <RefreshCw className="mr-2 h-4 w-4" />
