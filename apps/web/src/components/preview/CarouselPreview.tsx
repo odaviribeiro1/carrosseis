@@ -1,4 +1,5 @@
-import { Check, X, RefreshCw, Save, Loader2, Type, ChevronDown } from 'lucide-react';
+import { useState } from 'react';
+import { Check, X, RefreshCw, Save, Loader2, Type, ChevronDown, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -63,6 +64,17 @@ export function CarouselPreview({
   acceptProgress = '',
 }: CarouselPreviewProps) {
   const busy = isAccepting || isSavingDraft;
+  // Slides comecam colapsados; o usuario expande a edicao via botao "Editar".
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  function toggleExpanded(index: number) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
 
   function patchSpec(index: number, patch: (s: DesignSpec) => DesignSpec) {
     const current = specs[index];
@@ -117,20 +129,42 @@ export function CarouselPreview({
               slideTotal: slides.length,
             });
 
+            const isExpanded = expanded.has(index);
+
             return (
               <div
                 key={slide.position}
                 className="space-y-3 rounded-xl border border-[rgba(59,130,246,0.15)] bg-[rgba(59,130,246,0.03)] p-4"
               >
                 <div className="flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(59,130,246,0.12)] text-xs font-bold text-[#3B82F6]">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[rgba(59,130,246,0.12)] text-xs font-bold text-[#3B82F6]">
                     {slide.position}
                   </span>
-                  <span className="text-xs font-medium text-[#94A3B8]">
+                  <span className="shrink-0 text-xs font-medium text-[#94A3B8]">
                     {typeLabels[slide.type] ?? slide.type}
                   </span>
+                  {!isExpanded && (
+                    <span className="min-w-0 flex-1 truncate text-xs text-[#CBD5E1]">
+                      {slide.headline}
+                    </span>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto h-7 shrink-0 text-[10px]"
+                    onClick={() => toggleExpanded(index)}
+                  >
+                    <Pencil className="mr-1 h-3 w-3" />
+                    {isExpanded ? 'Fechar' : 'Editar'}
+                    <ChevronDown
+                      className={`ml-1 h-3 w-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    />
+                  </Button>
                 </div>
 
+                {isExpanded && (
+                  <>
                 {/* 1) Conteudo */}
                 <div className="space-y-2">
                   <p className={sectionLabel}>Conteudo</p>
@@ -371,6 +405,8 @@ export function CarouselPreview({
                     {promptPreview}
                   </pre>
                 </details>
+                  </>
+                )}
               </div>
             );
           })}
