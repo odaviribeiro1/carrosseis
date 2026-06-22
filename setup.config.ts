@@ -17,11 +17,14 @@ export type SetupConfig = {
 
 async function validateWithFormat(
   value: string,
-  prefix: string,
+  prefix: string | string[],
   minLength: number,
 ): Promise<{ ok: boolean; message?: string }> {
   if (!value.trim()) return { ok: false, message: 'Informe um valor.' };
-  if (!value.startsWith(prefix)) return { ok: false, message: `Deve comecar com ${prefix}` };
+  const prefixes = Array.isArray(prefix) ? prefix : [prefix];
+  if (!prefixes.some((p) => value.startsWith(p))) {
+    return { ok: false, message: `Deve comecar com ${prefixes.join(' ou ')}` };
+  }
   if (value.length < minLength) return { ok: false, message: `Deve ter no minimo ${minLength} caracteres` };
   return { ok: true };
 }
@@ -44,12 +47,13 @@ export const setupConfig: SetupConfig = {
     {
       key: 'google_api_key',
       label: 'Gemini (Google AI) API Key',
-      placeholder: 'AIza...',
+      placeholder: 'AIza... ou AQ....',
       inputType: 'password',
       docsUrl: 'https://aistudio.google.com/app/apikey',
       helpText: 'Usada para geracao de imagens (Gemini) e transcricao.',
       validate: async (value) =>
-        validateWithFormat(value, 'AIza', 20),
+        // Google AI Studio emite chaves no formato classico (AIza...) e no formato novo (AQ....).
+        validateWithFormat(value, ['AIza', 'AQ.'], 20),
     },
   ],
 };
