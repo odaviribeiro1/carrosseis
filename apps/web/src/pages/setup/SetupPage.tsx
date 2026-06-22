@@ -219,7 +219,21 @@ export function SetupPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(coreValues),
       });
-      const data = await res.json();
+      // O bootstrap pode estourar o tempo da function (504), e nesse caso a Vercel responde
+      // com texto, nao JSON. Tratamos isso para mostrar uma mensagem util de retry em vez de
+      // "Unexpected token ... is not valid JSON". O bootstrap e idempotente: basta tentar de novo.
+      const raw = await res.text();
+      let data: { success?: boolean; message?: string; deployment_id?: string } = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        if (res.status === 504 || res.status === 502) {
+          throw new Error(
+            'O bootstrap excedeu o tempo limite antes de concluir. Ele salva o progresso a cada etapa — clique em "Tentar" novamente para continuar de onde parou.',
+          );
+        }
+        throw new Error(`Resposta inesperada do servidor (HTTP ${res.status}). Tente novamente.`);
+      }
       if (!res.ok || !data.success) throw new Error(data.message ?? 'Bootstrap falhou');
 
       // Passos concluidos ate o disparo do redeploy.
