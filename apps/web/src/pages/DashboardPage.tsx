@@ -183,7 +183,10 @@ export function DashboardPage() {
                     </span>
                   </div>
                   <div className="mt-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                    <Link to={`/editor/${carousel.id}`} className="flex-1">
+                    <Link
+                      to={carousel.status === 'draft' ? `/draft/${carousel.id}` : `/editor/${carousel.id}`}
+                      className="flex-1"
+                    >
                       <Button variant="outline" size="sm" className="w-full">
                         <Pencil className="h-3 w-3" />
                       </Button>

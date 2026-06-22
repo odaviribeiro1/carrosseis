@@ -53,6 +53,7 @@ export function App() {
                         <Routes>
                           <Route path="/" element={<DashboardPage />} />
                           <Route path="/create" element={<CreateCarouselPage />} />
+                          <Route path="/draft/:id" element={<CreateCarouselPage />} />
                           <Route path="/settings" element={<SettingsPage />} />
                           <Route path="/settings/members" element={<Navigate to="/settings?tab=members" replace />} />
                           <Route path="/settings/credentials" element={<Navigate to="/settings?tab=credentials" replace />} />

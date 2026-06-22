@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Loader2,
   FileText,
@@ -155,6 +155,9 @@ function buildContentForLLM(params: {
 
 export function CreateCarouselPage() {
   const navigate = useNavigate();
+  // Em /draft/:id estamos editando um rascunho existente (abre direto na Preview).
+  const { id: editingId } = useParams<{ id: string }>();
+  const [loadingDraft, setLoadingDraft] = useState(Boolean(editingId));
   const [step, setStep] = useState(1);
   const [source, setSource] = useState<ContentSource>('text');
   const [content, setContent] = useState('');
@@ -234,6 +237,80 @@ export function CreateCarouselPage() {
     setConfigValues({ ...data, slideCount: clampedCount });
     setStep(3);
   }
+
+  // Edicao de rascunho: carrega conteudo + design specs + aspectos visuais e abre na Preview.
+  useEffect(() => {
+    if (!editingId) return;
+    let ignore = false;
+    async function loadDraft() {
+      const client = getSupabaseClient();
+      if (!client) return;
+      try {
+        const [{ data: carousel }, { data: slidesData }, { data: vs }] = await Promise.all([
+          client.from('carousels').select('ai_input').eq('id', editingId).single(),
+          client
+            .from('carousel_slides')
+            .select('position, content, design_spec')
+            .eq('carousel_id', editingId)
+            .order('position', { ascending: true }),
+          client.from('carousel_visual_settings').select('*').eq('carousel_id', editingId).maybeSingle(),
+        ]);
+        if (ignore) return;
+
+        const rows = (slidesData ?? []).filter((r) => r.content);
+        if (rows.length === 0) {
+          toast.error('Este rascunho nao tem conteudo editavel. Crie um novo carrossel.');
+          navigate('/');
+          return;
+        }
+
+        const slides = rows.map((r) => r.content as SlideContent);
+        const specs = rows.map(
+          (r, i) => (r.design_spec as DesignSpec | null) ?? defaultDesignSpec(slides[i]!.type),
+        );
+        setGeneratedSlides(slides);
+        setSlideSpecs(specs);
+
+        if (vs) {
+          setVisualSettings({
+            imageStyle: (vs.image_style as string) ?? defaultVisualSettings.imageStyle,
+            colorPalette: (vs.color_palette as string[]) ?? defaultVisualSettings.colorPalette,
+            aspectRatio: (vs.aspect_ratio as string) ?? defaultVisualSettings.aspectRatio,
+            referenceImageUrl: (vs.reference_image_url as string | null) ?? null,
+            imagePrompt: (vs.image_prompt as string) ?? '',
+            resolution: (vs.resolution as string) ?? defaultVisualSettings.resolution,
+          });
+        }
+
+        // Reconstroi a config (best-effort) a partir do ai_input salvo.
+        const ai = (carousel?.ai_input ?? {}) as Record<string, unknown>;
+        const cfg: ConfigFormValues = {
+          topic: (ai.topic as string) ?? '',
+          angle: (ai.angle as string) ?? '',
+          toneMode: (ai.tone_mode as 'original' | 'custom') ?? 'original',
+          toneOfVoice: (ai.tone_of_voice as string) ?? '',
+          audience: (ai.audience as string) ?? '',
+          depth: (ai.depth as Depth) ?? 'normal',
+          slideCount: (ai.slide_count as number) ?? slides.length,
+        };
+        setConfigValues(cfg);
+        if (typeof ai.content === 'string') setContent(ai.content);
+        setStep(4);
+      } catch (err) {
+        if (ignore) return;
+        toast.error('Erro ao carregar rascunho');
+        console.error(err);
+        navigate('/');
+      } finally {
+        if (!ignore) setLoadingDraft(false);
+      }
+    }
+    void loadDraft();
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId]);
 
   function resetExtraction() {
     setScrape(null);
@@ -545,10 +622,10 @@ export function CreateCarouselPage() {
   }
 
   // Persiste o carrossel. Com generateImages=true dispara a geracao das imagens
-  // via Edge Function generate-slide-image (Aceitar); false salva so como rascunho.
+  // via Edge Function generate-slide-image (Gerar Carrossel); false salva so como rascunho.
+  // Em modo edicao (editingId), ATUALIZA o rascunho existente em vez de criar um novo.
   async function persistCarousel(opts: { generateImages: boolean }) {
-    // Guarda contra duplo-clique: faz varios inserts e demora,
-    // então sem isto cliques repetidos criavam carrosseis duplicados.
+    // Guarda contra duplo-clique: faz varios inserts/updates e demora.
     if (isAccepting || isSavingDraft) return;
     if (opts.generateImages) setIsAccepting(true);
     else setIsSavingDraft(true);
@@ -561,67 +638,113 @@ export function CreateCarouselPage() {
       if (!user) throw new Error('Nao autenticado');
 
       const prompts = buildSlidePrompts();
+      const cfg = configValues;
+      const aiInput = {
+        type: source,
+        content: isExtracted ? extractedDraft : content,
+        topic: cfg?.topic ?? watch('topic') ?? '',
+        angle: cfg?.angle ?? watch('angle') ?? '',
+        audience: cfg?.audience ?? watch('audience') ?? '',
+        tone_of_voice: cfg?.toneOfVoice ?? watch('toneOfVoice') ?? '',
+        tone_mode: cfg?.toneMode ?? watch('toneMode') ?? 'original',
+        depth: cfg?.depth ?? watch('depth') ?? 'normal',
+        slide_count: generatedSlides.length,
+      };
+      const carouselFields = {
+        title: generatedSlides[0]?.headline ?? 'Sem titulo',
+        status: opts.generateImages ? 'ready' : 'draft',
+        slide_count: generatedSlides.length,
+        ai_input: aiInput,
+        updated_at: new Date().toISOString(),
+      };
 
-      const { data: carousel, error: carouselError } = await client
-        .from('carousels')
-        .insert({
-          created_by: user.id,
-          title: generatedSlides[0]?.headline ?? 'Sem titulo',
-          status: opts.generateImages ? 'ready' : 'draft',
-          slide_count: generatedSlides.length,
-          ai_input: {
-            type: source,
-            content: buildFinalContent(),
-            topic: watch('topic'),
-          },
-        })
-        .select('id')
-        .single();
+      // 1) Carrossel (update se editando rascunho, insert se novo).
+      let carouselId: string;
+      if (editingId) {
+        const { error } = await client.from('carousels').update(carouselFields).eq('id', editingId);
+        if (error) throw error;
+        carouselId = editingId;
+      } else {
+        const { data, error } = await client
+          .from('carousels')
+          .insert({ created_by: user.id, ...carouselFields })
+          .select('id')
+          .single();
+        if (error) throw error;
+        carouselId = data.id as string;
+      }
 
-      if (carouselError) throw carouselError;
-
+      // 2) Aspectos visuais (upsert por carousel_id).
       const parsedVisual = visualSettingsSchema.safeParse(visualSettings);
       if (parsedVisual.success) {
-        const { error: vsError } = await client
-          .from('carousel_visual_settings')
-          .insert({
-            carousel_id: carousel.id,
+        const { error: vsError } = await client.from('carousel_visual_settings').upsert(
+          {
+            carousel_id: carouselId,
             image_style: parsedVisual.data.imageStyle,
             color_palette: parsedVisual.data.colorPalette,
             aspect_ratio: parsedVisual.data.aspectRatio,
             reference_image_url: parsedVisual.data.referenceImageUrl,
             image_prompt: parsedVisual.data.imagePrompt,
             resolution: parsedVisual.data.resolution,
-          });
-
+          },
+          { onConflict: 'carousel_id' },
+        );
         if (vsError) console.error('Erro ao salvar config visual:', vsError);
       }
 
-      // Insere os slides com a design spec + prompt compilado; canvas_json fica no default.
-      const slideRows = generatedSlides.map((slide, i) => ({
-        carousel_id: carousel.id,
-        position: slide.position,
-        design_spec: slideSpecs[i] ?? defaultDesignSpec(slide.type),
-        image_prompt: prompts[i],
-      }));
-
-      const { data: insertedSlides, error: slidesError } = await client
-        .from('carousel_slides')
-        .insert(slideRows)
-        .select('id, position');
-
-      if (slidesError) throw slidesError;
+      // 3) Slides (com content estruturado + design spec + prompt compilado).
+      const slideIdByPosition = new Map<number, string>();
+      if (editingId) {
+        const { data: existing } = await client
+          .from('carousel_slides')
+          .select('id, position')
+          .eq('carousel_id', carouselId);
+        const existingByPos = new Map((existing ?? []).map((s) => [s.position as number, s.id as string]));
+        for (let i = 0; i < generatedSlides.length; i++) {
+          const slide = generatedSlides[i]!;
+          const row = {
+            content: slide,
+            design_spec: slideSpecs[i] ?? defaultDesignSpec(slide.type),
+            image_prompt: prompts[i],
+          };
+          const sid = existingByPos.get(slide.position);
+          if (sid) {
+            await client.from('carousel_slides').update(row).eq('id', sid);
+            slideIdByPosition.set(slide.position, sid);
+          } else {
+            const { data } = await client
+              .from('carousel_slides')
+              .insert({ carousel_id: carouselId, position: slide.position, ...row })
+              .select('id')
+              .single();
+            if (data) slideIdByPosition.set(slide.position, data.id as string);
+          }
+        }
+      } else {
+        const slideRows = generatedSlides.map((slide, i) => ({
+          carousel_id: carouselId,
+          position: slide.position,
+          content: slide,
+          design_spec: slideSpecs[i] ?? defaultDesignSpec(slide.type),
+          image_prompt: prompts[i],
+        }));
+        const { data: insertedSlides, error: slidesError } = await client
+          .from('carousel_slides')
+          .insert(slideRows)
+          .select('id, position');
+        if (slidesError) throw slidesError;
+        (insertedSlides ?? []).forEach((s) =>
+          slideIdByPosition.set(s.position as number, s.id as string),
+        );
+      }
 
       if (opts.generateImages) {
         // Gera as imagens em paralelo (limite de 3) via Nano Banana.
-        const byPosition = new Map<number, string>();
-        (insertedSlides ?? []).forEach((s) => byPosition.set(s.position as number, s.id as string));
-
         let done = 0;
         const total = generatedSlides.length;
         setAcceptProgress(`Gerando slide 0/${total}`);
         await runPool(generatedSlides, 3, async (slide, i) => {
-          const slideId = byPosition.get(slide.position);
+          const slideId = slideIdByPosition.get(slide.position);
           if (!slideId) return;
           try {
             const { data, error } = await client.functions.invoke('generate-slide-image', {
@@ -640,7 +763,7 @@ export function CreateCarouselPage() {
         });
 
         toast.success('Carrossel gerado');
-        navigate(`/editor/${carousel.id}`);
+        navigate(`/editor/${carouselId}`);
       } else {
         toast.success('Rascunho salvo');
         navigate('/');
@@ -681,10 +804,20 @@ export function CreateCarouselPage() {
     youtube: 'Transcrevendo video...',
   };
 
+  if (loadingDraft) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#3B82F6]" />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       <div className="mx-auto max-w-2xl">
-        <h1 className="mb-6 text-2xl font-bold text-[#F8FAFC]">Novo Carrossel</h1>
+        <h1 className="mb-6 text-2xl font-bold text-[#F8FAFC]">
+          {editingId ? 'Editar Rascunho' : 'Novo Carrossel'}
+        </h1>
 
         {step === 1 && (
           <Card>
