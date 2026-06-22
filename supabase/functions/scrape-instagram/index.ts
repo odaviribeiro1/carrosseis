@@ -173,7 +173,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const actor = actorForType(effectiveType);
-    const input = { directUrls: [url], resultsLimit: 1 };
+    // Os actors instagram-post-scraper / instagram-reel-scraper exigem o campo
+    // `username`, que aceita username, URL de perfil OU URL direta de post/reel.
+    const input = { username: [url], resultsLimit: 1 };
 
     let datasetId: string;
     try {
@@ -181,6 +183,7 @@ Deno.serve(async (req: Request) => {
       datasetId = await pollRun(run.data.id, token);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[scrape-instagram] actor=${actor} type=${effectiveType} falha: ${msg}`);
       const status = msg === 'timeout' ? 504 : 502;
       const userMsg = msg === 'timeout'
         ? 'A extracao demorou mais que o esperado. Tente novamente.'
