@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Loader2,
@@ -11,6 +11,8 @@ import {
   ChevronUp,
   ChevronDown,
   ImageOff,
+  ImagePlus,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -37,10 +39,42 @@ export function EditorPage() {
   const [slides, setSlides] = useState<RefineSlide[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [refinePrompt, setRefinePrompt] = useState('');
+  const [refineImage, setRefineImage] = useState<string | null>(null);
+  const [refineImageName, setRefineImageName] = useState('');
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [applyAllProgress, setApplyAllProgress] = useState('');
   const [reverting, setReverting] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
+  const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
+  function handleAttachImage(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite reanexar o mesmo arquivo
+    if (!file) return;
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast.error('Formato nao suportado. Use PNG, JPG ou WEBP.');
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error('Imagem muito grande (max 10MB).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setRefineImage(reader.result as string);
+      setRefineImageName(file.name);
+    };
+    reader.onerror = () => toast.error('Erro ao ler a imagem.');
+    reader.readAsDataURL(file);
+  }
+
+  function removeRefineImage() {
+    setRefineImage(null);
+    setRefineImageName('');
+  }
 
   useEffect(() => {
     function checkSize() {
@@ -98,13 +132,17 @@ export function EditorPage() {
     const client = getSupabaseClient();
     if (!client) throw new Error('Supabase nao configurado');
     const basePrompt = slide.imagePrompt ?? '';
-    const prompt = instruction.trim()
-      ? `${basePrompt}\n\nAJUSTE SOLICITADO (mantenha o texto literal e a identidade): ${instruction.trim()}.`
-      : basePrompt;
+    const adj = instruction.trim();
+    let prompt = basePrompt;
+    if (adj) {
+      prompt += `\n\nAJUSTE SOLICITADO (mantenha o texto literal e a identidade): ${adj}.`;
+    } else if (refineImage) {
+      prompt += '\n\nAJUSTE SOLICITADO: incorpore a imagem de referencia fornecida ao slide, mantendo o texto literal, o estilo e a identidade.';
+    }
     if (!prompt.trim()) throw new Error('Este slide nao tem prompt base. Gere o carrossel novamente.');
 
     const { data, error } = await client.functions.invoke('generate-slide-image', {
-      body: { slide_id: slide.id, prompt },
+      body: { slide_id: slide.id, prompt, reference_image: refineImage ?? undefined },
     });
     if (error) throw error;
     const result = data as { image_url?: string; version?: number; error?: string };
@@ -141,8 +179,8 @@ export function EditorPage() {
   async function applyToAll() {
     if (busy || slides.length === 0) return;
     const instruction = refinePrompt.trim();
-    if (!instruction) {
-      toast.error('Escreva uma instrucao de refino para aplicar em todos.');
+    if (!instruction && !refineImage) {
+      toast.error('Escreva uma instrucao ou anexe uma imagem para aplicar em todos.');
       return;
     }
     let done = 0;
@@ -399,6 +437,39 @@ export function EditorPage() {
             disabled={busy}
             className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-3 py-2 text-xs text-[#CBD5E1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] disabled:opacity-50"
           />
+
+          {/* Anexar imagem de referencia (multimodal) */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={handleAttachImage}
+          />
+          {refineImage ? (
+            <div className="flex items-center gap-2 rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] p-2">
+              <img src={refineImage} alt="Referencia" className="h-12 w-12 shrink-0 rounded object-cover" />
+              <span className="min-w-0 flex-1 truncate text-[11px] text-[#CBD5E1]">{refineImageName}</span>
+              <button
+                type="button"
+                onClick={removeRefineImage}
+                disabled={busy}
+                className="shrink-0 rounded p-1 text-[#94A3B8] hover:text-[#EF4444] disabled:opacity-40"
+                title="Remover imagem"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={busy}
+            >
+              <ImagePlus className="mr-2 h-4 w-4" /> Anexar imagem
+            </Button>
+          )}
 
           <Button className="w-full" onClick={() => void regenerateSlide()} disabled={busy}>
             {regeneratingId === active?.id ? (
