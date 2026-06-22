@@ -30,8 +30,9 @@ import {
 import { CarouselPreview } from '@/components/preview/CarouselPreview';
 import { VisualSettingsStep } from '@/components/create/VisualSettingsStep';
 import { getSupabaseClient } from '@/lib/supabase';
-import { generatedContentSchema, visualSettingsSchema } from '@/types/carousel';
-import type { SlideContent, VisualSettings } from '@/types/carousel';
+import { generatedContentSchema, visualSettingsSchema, defaultDesignSpec } from '@/types/carousel';
+import type { SlideContent, VisualSettings, DesignSpec } from '@/types/carousel';
+import { buildSlidePrompt } from '@/lib/ai/buildSlidePrompt';
 
 type ContentSource = 'text' | 'ig_carousel' | 'ig_post' | 'ig_reel' | 'youtube';
 
@@ -121,88 +122,6 @@ function buildContentForLLM(params: {
   return parts.join('\n');
 }
 
-// Monta o prompt da imagem de fundo de um slide a partir das configuracoes visuais.
-function buildSlideImagePrompt(slide: SlideContent, visual: VisualSettings): string {
-  const palette = visual.colorPalette.join(', ');
-  const base = visual.imagePrompt?.trim();
-  return [
-    'Crie uma imagem de FUNDO para um slide de carrossel de Instagram (proporcao 4:5, 1080x1350).',
-    `Estilo visual: ${visual.imageStyle}.`,
-    `Paleta de cores predominante: ${palette}.`,
-    base ? `Direcao de arte: ${base}.` : '',
-    `Tema do slide: ${slide.headline}. ${slide.body}`,
-    'IMPORTANTE: a imagem deve ser APENAS o fundo visual, SEM nenhum texto, palavra, letra ou logotipo. Mantenha areas com espaco limpo para sobrepor texto depois.',
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
-
-// Monta o canvas_json (Konva) de um slide; com imagem de fundo + overlay quando houver.
-function buildSlideCanvasJson(slide: SlideContent, imageUrl: string | null) {
-  const hasImage = Boolean(imageUrl);
-  const elements: Array<{ type: string; name: string; attrs: Record<string, unknown> }> = [];
-
-  if (hasImage) {
-    elements.push({
-      type: 'Image',
-      name: 'Fundo IA',
-      attrs: { x: 0, y: 0, width: 1080, height: 1350, src: imageUrl, draggable: false },
-    });
-    // Overlay escuro para garantir legibilidade do texto sobre a imagem.
-    elements.push({
-      type: 'Rect',
-      name: 'Overlay',
-      attrs: { x: 0, y: 0, width: 1080, height: 1350, fill: '#000000', opacity: 0.4 },
-    });
-  } else {
-    elements.push({
-      type: 'Rect',
-      name: 'Fundo',
-      attrs: { x: 0, y: 0, width: 1080, height: 1350, fill: '#ffffff' },
-    });
-  }
-
-  const titleFill = hasImage ? '#ffffff' : '#1f2937';
-  const bodyFill = hasImage ? '#e5e7eb' : '#4b5563';
-  const textShadow = hasImage
-    ? { shadowColor: '#000000', shadowBlur: 12, shadowOpacity: 0.6 }
-    : {};
-
-  elements.push({
-    type: 'Text',
-    name: 'Titulo',
-    attrs: {
-      x: 60,
-      y: slide.type === 'capa' ? 400 : 100,
-      text: slide.headline,
-      fontSize: slide.type === 'capa' ? 64 : 48,
-      fontStyle: 'bold',
-      fill: titleFill,
-      width: 960,
-      align: 'center',
-      ...textShadow,
-    },
-  });
-
-  elements.push({
-    type: 'Text',
-    name: 'Corpo',
-    attrs: {
-      x: 60,
-      y: slide.type === 'capa' ? 540 : 250,
-      text: slide.body,
-      fontSize: 28,
-      fill: bodyFill,
-      width: 960,
-      align: 'center',
-      lineHeight: 1.6,
-      ...textShadow,
-    },
-  });
-
-  return { width: 1080, height: 1350, elements };
-}
-
 export function CreateCarouselPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -234,6 +153,7 @@ export function CreateCarouselPage() {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [acceptProgress, setAcceptProgress] = useState('');
   const [generatedSlides, setGeneratedSlides] = useState<SlideContent[]>([]);
+  const [slideSpecs, setSlideSpecs] = useState<DesignSpec[]>([]);
   const [configValues, setConfigValues] = useState<ConfigFormValues | null>(null);
   const [visualSettings, setVisualSettings] = useState<VisualSettings>(defaultVisualSettings);
 
@@ -471,6 +391,8 @@ export function CreateCarouselPage() {
       }
 
       setGeneratedSlides(parsed.data.slides);
+      // Defaults de design por slide (editaveis na Preview).
+      setSlideSpecs(parsed.data.slides.map((s) => defaultDesignSpec(s.type)));
       setVisualSettings(visual);
       setStep(4);
       toast.success('Carrossel gerado com sucesso');
@@ -481,38 +403,37 @@ export function CreateCarouselPage() {
     }
   }
 
-  // Gera uma imagem de fundo por slide via Nano Banana (generate-image).
-  // Retorna data URLs alinhados por indice; slide com falha recebe null (fundo branco).
-  async function generateSlideImages(
-    client: NonNullable<ReturnType<typeof getSupabaseClient>>,
-  ): Promise<Array<string | null>> {
-    const images: Array<string | null> = [];
-    for (let i = 0; i < generatedSlides.length; i++) {
-      const slide = generatedSlides[i];
-      if (!slide) {
-        images.push(null);
-        continue;
-      }
-      setAcceptProgress(`Gerando imagens ${i + 1}/${generatedSlides.length}`);
-      try {
-        const { data, error } = await client.functions.invoke('generate-image', {
-          body: { prompt: buildSlideImagePrompt(slide, visualSettings) },
-        });
-        if (error) throw error;
-        const result = data as { image?: string; error?: string };
-        if (result?.error) throw new Error(result.error);
-        images.push(result?.image ?? null);
-      } catch (err) {
-        // Best-effort: uma falha nao impede salvar o carrossel; o slide fica com fundo branco.
-        console.error(`Erro ao gerar imagem do slide ${i + 1}:`, err);
-        images.push(null);
-      }
-    }
-    return images;
+  // Compila o prompt do Nano Banana para cada slide (conteudo + design spec + visual).
+  function buildSlidePrompts(): string[] {
+    return generatedSlides.map((slide, i) =>
+      buildSlidePrompt({
+        content: slide,
+        designSpec: slideSpecs[i] ?? defaultDesignSpec(slide.type),
+        visual: visualSettings,
+        slideIndex: i,
+        slideTotal: generatedSlides.length,
+      }),
+    );
   }
 
-  // Persiste o carrossel. Com generateImages=true gera as imagens (Aceitar);
-  // false salva apenas o texto como rascunho.
+  // Executa worker sobre items com no maximo `limit` chamadas concorrentes.
+  async function runPool<T>(
+    items: T[],
+    limit: number,
+    worker: (item: T, index: number) => Promise<void>,
+  ): Promise<void> {
+    let cursor = 0;
+    const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (cursor < items.length) {
+        const idx = cursor++;
+        await worker(items[idx] as T, idx);
+      }
+    });
+    await Promise.all(runners);
+  }
+
+  // Persiste o carrossel. Com generateImages=true dispara a geracao das imagens
+  // via Edge Function generate-slide-image (Aceitar); false salva so como rascunho.
   async function persistCarousel(opts: { generateImages: boolean }) {
     // Guarda contra duplo-clique: faz varios inserts e demora,
     // então sem isto cliques repetidos criavam carrosseis duplicados.
@@ -527,10 +448,7 @@ export function CreateCarouselPage() {
       const { data: { user } } = await client.auth.getUser();
       if (!user) throw new Error('Nao autenticado');
 
-      // Gera as imagens antes de inserir, para falhar cedo sem deixar carrossel orfao.
-      const images = opts.generateImages
-        ? await generateSlideImages(client)
-        : generatedSlides.map(() => null);
+      const prompts = buildSlidePrompts();
 
       const { data: carousel, error: carouselError } = await client
         .from('carousels')
@@ -567,20 +485,49 @@ export function CreateCarouselPage() {
         if (vsError) console.error('Erro ao salvar config visual:', vsError);
       }
 
-      const slides = generatedSlides.map((slide, i) => ({
+      // Insere os slides com a design spec + prompt compilado; canvas_json fica no default.
+      const slideRows = generatedSlides.map((slide, i) => ({
         carousel_id: carousel.id,
         position: slide.position,
-        canvas_json: buildSlideCanvasJson(slide, images[i] ?? null),
+        design_spec: slideSpecs[i] ?? defaultDesignSpec(slide.type),
+        image_prompt: prompts[i],
       }));
 
-      const { error: slidesError } = await client
+      const { data: insertedSlides, error: slidesError } = await client
         .from('carousel_slides')
-        .insert(slides);
+        .insert(slideRows)
+        .select('id, position');
 
       if (slidesError) throw slidesError;
 
       if (opts.generateImages) {
-        toast.success('Carrossel salvo');
+        // Gera as imagens em paralelo (limite de 3) via Nano Banana.
+        const byPosition = new Map<number, string>();
+        (insertedSlides ?? []).forEach((s) => byPosition.set(s.position as number, s.id as string));
+
+        let done = 0;
+        const total = generatedSlides.length;
+        setAcceptProgress(`Gerando slide 0/${total}`);
+        await runPool(generatedSlides, 3, async (slide, i) => {
+          const slideId = byPosition.get(slide.position);
+          if (!slideId) return;
+          try {
+            const { data, error } = await client.functions.invoke('generate-slide-image', {
+              body: { slide_id: slideId, prompt: prompts[i] },
+            });
+            if (error) throw error;
+            const result = data as { error?: string };
+            if (result?.error) throw new Error(result.error);
+          } catch (err) {
+            // Best-effort: uma falha nao aborta o carrossel; o slide pode ser regenerado depois.
+            console.error(`Erro ao gerar imagem do slide ${slide.position}:`, err);
+          } finally {
+            done += 1;
+            setAcceptProgress(`Gerando slide ${done}/${total}`);
+          }
+        });
+
+        toast.success('Carrossel gerado');
         navigate(`/editor/${carousel.id}`);
       } else {
         toast.success('Rascunho salvo');
@@ -600,6 +547,18 @@ export function CreateCarouselPage() {
 
   function saveDraft() {
     void persistCarousel({ generateImages: false });
+  }
+
+  function updateSpec(index: number, spec: DesignSpec) {
+    setSlideSpecs((prev) => prev.map((s, i) => (i === index ? spec : s)));
+  }
+
+  // Padroniza a tipografia: replica a do slide `sourceIndex` para todos.
+  function standardizeTypography(sourceIndex: number) {
+    const sourceSpec = slideSpecs[sourceIndex];
+    if (!sourceSpec) return;
+    setSlideSpecs((prev) => prev.map((s) => ({ ...s, typography: sourceSpec.typography })));
+    toast.success('Tipografia padronizada em todos os slides');
   }
 
   const extractingLabel: Record<ContentSource, string> = {
@@ -897,6 +856,8 @@ export function CreateCarouselPage() {
         {step === 4 && (
           <CarouselPreview
             slides={generatedSlides}
+            specs={slideSpecs}
+            visual={visualSettings}
             onAccept={acceptCarousel}
             onSaveDraft={saveDraft}
             isAccepting={isAccepting}
@@ -905,8 +866,11 @@ export function CreateCarouselPage() {
             onReject={() => setStep(3)}
             onRegenerate={() => {
               setGeneratedSlides([]);
+              setSlideSpecs([]);
               setStep(3);
             }}
+            onUpdateSpec={updateSpec}
+            onStandardizeTypography={standardizeTypography}
             onUpdateSlide={(position, field, value) => {
               setGeneratedSlides((prev) =>
                 prev.map((s) =>

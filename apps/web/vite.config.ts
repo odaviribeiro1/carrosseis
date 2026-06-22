@@ -20,7 +20,6 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
-          if (id.includes('konva')) return 'vendor-konva';
           if (id.includes('react-router')) return 'vendor-router';
           if (id.match(/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/))
             return 'vendor-react';

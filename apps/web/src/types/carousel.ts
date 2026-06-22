@@ -27,6 +27,76 @@ export const visualSettingsSchema = z.object({
 
 export type VisualSettings = z.infer<typeof visualSettingsSchema>;
 
+// ---------------------------------------------------------------------------
+// Design spec — coletada por slide para compor um prompt robusto ao Nano Banana.
+// 4 dimensoes: tipografia, hierarquia, layout, identidade.
+// ---------------------------------------------------------------------------
+
+export const TEXT_ROLES = ['titulo', 'subtitulo', 'corpo', 'destaque'] as const;
+export const textRoleSchema = z.enum(TEXT_ROLES);
+export type TextRole = z.infer<typeof textRoleSchema>;
+
+export const FONT_FAMILIES = [
+  'Inter',
+  'Poppins',
+  'Montserrat',
+  'Roboto',
+  'Playfair Display',
+  'Lora',
+  'Oswald',
+  'Bebas Neue',
+] as const;
+
+export const typographyStyleSchema = z.object({
+  fontFamily: z.string().min(1),
+  fontSize: z.number().int().min(8).max(200),
+});
+export type TypographyStyle = z.infer<typeof typographyStyleSchema>;
+
+export const designSpecSchema = z.object({
+  // Tipografia: fonte + tamanho px por papel de texto.
+  typography: z.object({
+    titulo: typographyStyleSchema,
+    subtitulo: typographyStyleSchema,
+    corpo: typographyStyleSchema,
+    destaque: typographyStyleSchema,
+  }),
+  // Hierarquia: papel atribuido a cada bloco de conteudo.
+  hierarchy: z.object({
+    headline: textRoleSchema,
+    body: textRoleSchema,
+    cta: textRoleSchema,
+  }),
+  // Layout: alinhamento + posicao do bloco de texto.
+  layout: z.object({
+    align: z.enum(['left', 'center', 'right']),
+    position: z.enum(['top', 'center', 'bottom']),
+  }),
+  // Identidade: posicao do logo + watermark (paleta vem dos Aspectos Visuais).
+  identity: z.object({
+    logoPosition: z.enum(['none', 'top-left', 'top-right', 'bottom-left', 'bottom-right']),
+    watermark: z.boolean(),
+    watermarkText: z.string().default(''),
+  }),
+});
+export type DesignSpec = z.infer<typeof designSpecSchema>;
+
+// Defaults heuristicos coerentes com a hierarquia, por tipo de slide.
+export function defaultDesignSpec(slideType: SlideContent['type']): DesignSpec {
+  const isCapa = slideType === 'capa';
+  return {
+    typography: {
+      titulo: { fontFamily: 'Inter', fontSize: isCapa ? 72 : 52 },
+      subtitulo: { fontFamily: 'Inter', fontSize: 40 },
+      corpo: { fontFamily: 'Inter', fontSize: 32 },
+      destaque: { fontFamily: 'Inter', fontSize: 44 },
+    },
+    hierarchy: { headline: 'titulo', body: 'corpo', cta: 'destaque' },
+    layout: { align: 'center', position: isCapa ? 'center' : 'top' },
+    identity: { logoPosition: 'none', watermark: false, watermarkText: '' },
+  };
+}
+
 export const canvasJsonSchema = z.object({
   width: z.number().default(1080),
   height: z.number().default(1350),

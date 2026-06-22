@@ -24,8 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { getSupabaseClient } from '@/lib/supabase';
-import { downloadSlidesAsZip } from '@/lib/export/download-zip';
-import type { EditorSlide, EditorElement } from '@/stores/editor-store';
+import { downloadImagesAsZip } from '@/lib/export/download-zip';
 import type { Carousel, CarouselStatus } from '@content-hub/shared';
 
 export function DashboardPage() {
@@ -78,7 +77,7 @@ export function DashboardPage() {
     try {
       const { data: slidesData, error } = await client
         .from('carousel_slides')
-        .select('id, position, canvas_json')
+        .select('position, image_url')
         .eq('carousel_id', carousel.id)
         .order('position', { ascending: true });
 
@@ -88,26 +87,14 @@ export function DashboardPage() {
         return;
       }
 
-      const editorSlides: EditorSlide[] = slidesData.map((s) => {
-        const canvas = (s.canvas_json ?? {}) as Record<string, unknown>;
-        const elements = Array.isArray(canvas.elements)
-          ? (canvas.elements as Record<string, unknown>[]).map((el, idx) => ({
-              id: `el_${s.id}_${idx}`,
-              type: ((el.type as string) || 'Rect') as EditorElement['type'],
-              name: `${el.type || 'Elemento'} ${idx + 1}`,
-              visible: true,
-              locked: false,
-              attrs: (el.attrs as Record<string, unknown>) || {},
-            }))
-          : [];
+      const images = slidesData
+        .filter((s) => s.image_url)
+        .map((s) => ({ position: s.position as number, url: s.image_url as string }));
 
-        return {
-          id: s.id as string,
-          position: s.position as number,
-          elements,
-          backgroundColor: '#ffffff',
-        };
-      });
+      if (images.length === 0) {
+        toast.error('Esse carrossel ainda nao tem imagens geradas.');
+        return;
+      }
 
       const safeName = carousel.title
         .normalize('NFD')
@@ -115,7 +102,7 @@ export function DashboardPage() {
         .replace(/[^a-zA-Z0-9-_]+/g, '-')
         .toLowerCase() || 'carrossel';
 
-      await downloadSlidesAsZip(editorSlides, safeName);
+      await downloadImagesAsZip(images, safeName);
       toast.success('Download iniciado');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao baixar carrossel');
