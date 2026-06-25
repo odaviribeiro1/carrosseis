@@ -58,7 +58,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Try Nano Banana 2 first, fallback to Nano Banana Pro
-    const models = ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'];
+    const models = ['gemini-3.1-flash-image', 'gemini-3-pro-image'];
     let imageBase64 = '';
     let usedModel = '';
     let lastError = '';

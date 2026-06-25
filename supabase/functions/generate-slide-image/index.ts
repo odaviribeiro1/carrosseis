@@ -4,7 +4,7 @@ import { getCredential } from '../_shared/credentials.ts';
 
 const BUCKET = 'slide-images';
 // Nano Banana 2 primeiro, fallback para Nano Banana Pro.
-const MODELS = ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'];
+const MODELS = ['gemini-3.1-flash-image', 'gemini-3-pro-image'];
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = await getCorsHeaders(req);
