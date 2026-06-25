@@ -269,6 +269,35 @@ export function VisualSettingsStep({ initial, onBack, onGenerate, isGenerating }
           </Select>
         </div>
 
+        {/* Conteudo dos slides: imagens + texto ou apenas texto */}
+        <div className="space-y-2">
+          <Label>Conteudo dos Slides</Label>
+          <div className="flex gap-2">
+            {([
+              { value: 'image_text', label: 'Imagens + Texto' },
+              { value: 'text_only', label: 'Apenas Texto' },
+            ] as const).map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`flex-1 rounded-lg border px-3 py-2 text-center text-xs transition-all ${
+                  settings.slideMode === opt.value
+                    ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.1)] text-[#3B82F6]'
+                    : 'border-[rgba(59,130,246,0.15)] text-[#94A3B8] hover:border-[rgba(59,130,246,0.3)]'
+                }`}
+                onClick={() => updateField('slideMode', opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-[#94A3B8]">
+            {settings.slideMode === 'text_only'
+              ? 'Cada slide tera apenas texto sobre um fundo limpo.'
+              : 'O Nano Banana adiciona imagens e elementos visuais junto do texto em cada slide.'}
+          </p>
+        </div>
+
         {/* Color Palette */}
         <div className="space-y-2">
           <Label>Paleta de Cores</Label>

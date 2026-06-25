@@ -66,6 +66,17 @@ export function buildSlidePrompt(args: BuildSlidePromptArgs): string {
   );
   lines.push(`Este é o slide ${slideIndex + 1} de ${slideTotal} (tipo: ${content.type}).`);
 
+  // Conteúdo do slide: imagens + texto, ou apenas texto sobre fundo limpo.
+  if (visual.slideMode === 'text_only') {
+    lines.push(
+      'CONTEÚDO DO SLIDE: APENAS TEXTO sobre um fundo limpo e minimalista. NÃO inclua fotos, cenas, personagens nem ilustrações elaboradas — foco total na tipografia, hierarquia e legibilidade.',
+    );
+  } else {
+    lines.push(
+      'CONTEÚDO DO SLIDE: IMAGENS + TEXTO. Inclua imagens, cenas ou elementos visuais ricos e relevantes ao tema, integrados ao texto de forma harmônica e com alta legibilidade.',
+    );
+  }
+
   // Direção de arte global: âncora de consistência compartilhada por todos os slides.
   if (artDirection) {
     lines.push('');

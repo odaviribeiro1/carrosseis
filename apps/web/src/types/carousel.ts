@@ -20,6 +20,8 @@ export const visualSettingsSchema = z.object({
   imageStyle: z.string().min(1, 'Selecione um estilo'),
   colorPalette: z.array(z.string()).length(5),
   aspectRatio: z.string().min(1, 'Selecione uma proporcao'),
+  // Conteudo de cada slide: imagens + texto (Nano Banana gera cena rica) ou apenas texto.
+  slideMode: z.enum(['image_text', 'text_only']).default('image_text'),
   // Imagens de referencia (data URLs base64) usadas como inspiracao na geracao.
   referenceImages: z.array(z.string()).default([]),
   imagePrompt: z.string().default(''),
