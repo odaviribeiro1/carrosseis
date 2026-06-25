@@ -97,6 +97,13 @@ Deno.serve(async (req: Request) => {
     if (slideErr || !slide) return json({ error: 'Slide nao encontrado' }, 404);
 
     // Geracao da imagem via Gemini (Nano Banana) com fallback de modelo.
+    const refBytes = referenceParts.reduce((n, p) => n + (p.inlineData?.data?.length ?? 0), 0);
+    console.log('[slide-image] req', {
+      slide_id,
+      promptLen: String(prompt).length,
+      refCount: referenceParts.length,
+      refBytes,
+    });
     let imageBase64 = '';
     let usedModel = '';
     let lastError = '';
@@ -137,7 +144,10 @@ Deno.serve(async (req: Request) => {
         lastError = `${model}: ${String(err)}`;
       }
     }
-    if (!imageBase64) return json({ error: `Falha ao gerar imagem. ${lastError}` }, 400);
+    if (!imageBase64) {
+      console.error('[slide-image] gemini falhou:', lastError);
+      return json({ error: `Falha ao gerar imagem. ${lastError}` }, 400);
+    }
 
     // Versionamento: arquiva a versao atual antes de sobrescrever.
     const currentVersion = (slide.current_version as number | null) ?? 1;
