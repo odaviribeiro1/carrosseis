@@ -33,6 +33,8 @@ import { getSupabaseClient } from '@/lib/supabase';
 import { generatedContentSchema, visualSettingsSchema, defaultDesignSpec } from '@/types/carousel';
 import type { SlideContent, VisualSettings, DesignSpec } from '@/types/carousel';
 import { buildSlidePrompt } from '@/lib/ai/buildSlidePrompt';
+import { generateArtDirection } from '@/lib/ai/generateArtDirection';
+import type { ArtDirection } from '@content-hub/shared';
 
 type ContentSource = 'text' | 'ig_carousel' | 'ig_post' | 'ig_reel' | 'youtube';
 
@@ -186,6 +188,8 @@ export function CreateCarouselPage() {
   const [isAccepting, setIsAccepting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [acceptProgress, setAcceptProgress] = useState('');
+  // Quando true, a proxima geracao recomputa a direcao de arte (ignora o cache).
+  const [forceArtDirection, setForceArtDirection] = useState(false);
   const [generatedSlides, setGeneratedSlides] = useState<SlideContent[]>([]);
   const [slideSpecs, setSlideSpecs] = useState<DesignSpec[]>([]);
   const [configValues, setConfigValues] = useState<ConfigFormValues | null>(null);
@@ -592,8 +596,9 @@ export function CreateCarouselPage() {
     }
   }
 
-  // Compila o prompt do Nano Banana para cada slide (conteudo + design spec + visual).
-  function buildSlidePrompts(): string[] {
+  // Compila o prompt do Nano Banana para cada slide (conteudo + design spec +
+  // visual + direcao de arte global, que e a ancora de consistencia entre slides).
+  function buildSlidePrompts(artDirection?: ArtDirection): string[] {
     const refNote =
       visualSettings.referenceImages.length > 0
         ? '\nUse as imagens de referencia fornecidas como inspiracao visual (estilo, paleta, composicao), sem copiar textos delas.'
@@ -606,8 +611,29 @@ export function CreateCarouselPage() {
           visual: visualSettings,
           slideIndex: i,
           slideTotal: generatedSlides.length,
+          artDirection,
         }) + refNote,
     );
+  }
+
+  // Direcao de arte global (cache via hash em carousels). Best-effort: se faltar
+  // a key da OpenAI ou der erro, os slides ainda sao gerados (sem a ancora global).
+  async function resolveArtDirection(carouselId: string): Promise<ArtDirection | undefined> {
+    try {
+      const result = await generateArtDirection({
+        carouselId,
+        content: isExtracted ? extractedDraft : content,
+        visualSettings,
+        force: forceArtDirection,
+      });
+      if (forceArtDirection) setForceArtDirection(false);
+      toast.message(result.cached ? 'Direcao de arte reusada (cache)' : 'Direcao de arte gerada');
+      return result.artDirection;
+    } catch (err) {
+      console.warn('Direcao de arte indisponivel:', err);
+      toast.message(err instanceof Error ? err.message : 'Direcao de arte indisponivel');
+      return undefined;
+    }
   }
 
   // Executa worker sobre items com no maximo `limit` chamadas concorrentes.
@@ -642,7 +668,6 @@ export function CreateCarouselPage() {
       const { data: { user } } = await client.auth.getUser();
       if (!user) throw new Error('Nao autenticado');
 
-      const prompts = buildSlidePrompts();
       const cfg = configValues;
       const aiInput = {
         type: source,
@@ -696,6 +721,11 @@ export function CreateCarouselPage() {
         );
         if (vsError) console.error('Erro ao salvar config visual:', vsError);
       }
+
+      // 2.5) Direcao de arte global (cacheada por hash) + prompts dos slides ja
+      // ancorados nela. Precisa do carouselId, por isso vem depois do passo 1.
+      const artDirection = await resolveArtDirection(carouselId);
+      const prompts = buildSlidePrompts(artDirection);
 
       // 3) Slides (com content estruturado + design spec + prompt compilado).
       const slideIdByPosition = new Map<number, string>();
@@ -790,6 +820,13 @@ export function CreateCarouselPage() {
 
   function saveDraft() {
     void persistCarousel({ generateImages: false });
+  }
+
+  // Forca uma nova base visual (direcao de arte) na proxima geracao, mantendo o
+  // conteudo. O recomputo em si acontece em resolveArtDirection (force=true).
+  function regenerateArtDirection() {
+    setForceArtDirection(true);
+    toast.message('Nova direcao de arte sera gerada ao gerar o carrossel.');
   }
 
   function updateSpec(index: number, spec: DesignSpec) {
@@ -1205,6 +1242,8 @@ export function CreateCarouselPage() {
             isAccepting={isAccepting}
             isSavingDraft={isSavingDraft}
             acceptProgress={acceptProgress}
+            onRegenerateArtDirection={regenerateArtDirection}
+            artDirectionPending={forceArtDirection}
             onReject={() => setStep(3)}
             onRegenerate={() => {
               setGeneratedSlides([]);

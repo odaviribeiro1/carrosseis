@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, X, RefreshCw, Save, Loader2, Type, ChevronDown, Pencil } from 'lucide-react';
+import { Check, X, RefreshCw, Save, Loader2, Type, ChevronDown, Pencil, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -24,6 +24,10 @@ interface CarouselPreviewProps {
   onReject: () => void;
   onRegenerate: () => void;
   onSaveDraft: () => void;
+  /** Força nova direção de arte (base visual) na próxima geração, mantendo o conteúdo. */
+  onRegenerateArtDirection?: () => void;
+  /** True quando uma nova direção de arte já está agendada para a próxima geração. */
+  artDirectionPending?: boolean;
   isAccepting?: boolean;
   isSavingDraft?: boolean;
   acceptProgress?: string;
@@ -59,6 +63,8 @@ export function CarouselPreview({
   onReject,
   onRegenerate,
   onSaveDraft,
+  onRegenerateArtDirection,
+  artDirectionPending = false,
   isAccepting = false,
   isSavingDraft = false,
   acceptProgress = '',
@@ -411,6 +417,28 @@ export function CarouselPreview({
             );
           })}
         </div>
+
+        {/* Regerar direcao de arte — nova base visual mantendo o conteudo */}
+        {onRegenerateArtDirection && (
+          <div className="flex items-center justify-between rounded-lg border border-dashed border-[rgba(59,130,246,0.25)] px-3 py-2">
+            <span className="text-xs text-[#94A3B8]">
+              {artDirectionPending
+                ? 'Nova direcao de arte agendada para a proxima geracao.'
+                : 'Os slides compartilham uma direcao de arte (paleta, fundo, tipografia).'}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 px-2 text-xs"
+              disabled={busy || artDirectionPending}
+              onClick={onRegenerateArtDirection}
+            >
+              <Wand2 className="mr-1 h-3 w-3" />
+              Regerar direcao de arte
+            </Button>
+          </div>
+        )}
 
         {/* Acoes */}
         <div className="flex flex-wrap gap-2">

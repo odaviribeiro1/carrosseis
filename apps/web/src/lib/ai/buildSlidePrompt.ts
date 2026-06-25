@@ -1,4 +1,5 @@
 import type { SlideContent, DesignSpec, VisualSettings, TextRole } from '@/types/carousel';
+import { artDirectionToPromptBlock, type ArtDirection } from '@content-hub/shared';
 
 const ROLE_LABEL: Record<TextRole, string> = {
   titulo: 'TÍTULO',
@@ -43,6 +44,8 @@ export interface BuildSlidePromptArgs {
   visual: VisualSettings;
   slideIndex: number;
   slideTotal: number;
+  /** Direção de arte global (âncora de consistência entre todos os slides). */
+  artDirection?: ArtDirection;
   /** Instrução de refino em linguagem natural, anexada ao final. */
   refineInstruction?: string;
 }
@@ -52,7 +55,7 @@ export interface BuildSlidePromptArgs {
  * (imagem + texto). Usado tanto na geração inicial quanto no refino.
  */
 export function buildSlidePrompt(args: BuildSlidePromptArgs): string {
-  const { content, designSpec, visual, slideIndex, slideTotal, refineInstruction } = args;
+  const { content, designSpec, visual, slideIndex, slideTotal, artDirection, refineInstruction } = args;
   const ts = designSpec.typography;
   const style = STYLE_LABEL[visual.imageStyle] ?? visual.imageStyle;
   const palette = visual.colorPalette.join(', ');
@@ -62,6 +65,12 @@ export function buildSlidePrompt(args: BuildSlidePromptArgs): string {
     `Crie um slide de carrossel para Instagram, proporção 4:5 (1080x1350px), estilo ${style}.`,
   );
   lines.push(`Este é o slide ${slideIndex + 1} de ${slideTotal} (tipo: ${content.type}).`);
+
+  // Direção de arte global: âncora de consistência compartilhada por todos os slides.
+  if (artDirection) {
+    lines.push('');
+    lines.push(artDirectionToPromptBlock(artDirection));
+  }
   lines.push(
     `Use esta paleta de cores APENAS como referência de design do slide (cores de fundo, texto e elementos): ${palette}. NÃO escreva nem desenhe estes códigos na imagem.`,
   );
