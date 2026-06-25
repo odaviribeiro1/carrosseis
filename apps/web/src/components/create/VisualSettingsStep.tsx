@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
-import { Palette, Upload, X, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Palette, Upload, X, ArrowLeft, ArrowRight, Loader2, Save, Bookmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Card,
@@ -16,7 +17,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { VisualSettings } from '@/types/carousel';
+import { getSupabaseClient } from '@/lib/supabase';
+import {
+  listVisualPresets,
+  saveVisualPreset,
+  deleteVisualPreset,
+  type VisualPreset,
+} from '@/lib/visualPresets';
 import { toast } from 'sonner';
 
 interface VisualSettingsStepProps {
@@ -55,8 +71,70 @@ export function VisualSettingsStep({ initial, onBack, onGenerate, isGenerating }
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Presets de aspectos visuais (compartilhados na instancia).
+  const [presets, setPresets] = useState<VisualPreset[]>([]);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const [savingPreset, setSavingPreset] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const client = getSupabaseClient();
+        if (client) {
+          const { data: { user } } = await client.auth.getUser();
+          if (active) setMyUserId(user?.id ?? null);
+        }
+        const list = await listVisualPresets();
+        if (active) setPresets(list);
+      } catch (err) {
+        console.error('Erro ao carregar presets:', err);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   function updateField<K extends keyof VisualSettings>(key: K, value: VisualSettings[K]) {
     setSettings((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function applyPreset(preset: VisualPreset) {
+    setSettings(preset.settings);
+    toast.success(`Preset "${preset.name}" aplicado`);
+  }
+
+  async function handleSavePreset() {
+    const name = presetName.trim();
+    if (!name) {
+      toast.error('Da um nome ao preset.');
+      return;
+    }
+    setSavingPreset(true);
+    try {
+      const created = await saveVisualPreset(name, settings);
+      setPresets((prev) => [created, ...prev]);
+      setSaveOpen(false);
+      setPresetName('');
+      toast.success('Preferencias salvas como preset');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar preset');
+    } finally {
+      setSavingPreset(false);
+    }
+  }
+
+  async function handleDeletePreset(id: string) {
+    try {
+      await deleteVisualPreset(id);
+      setPresets((prev) => prev.filter((p) => p.id !== id));
+      toast.success('Preset removido');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao remover preset');
+    }
   }
 
   function selectPalette(colors: string[]) {
@@ -131,6 +209,46 @@ export function VisualSettingsStep({ initial, onBack, onGenerate, isGenerating }
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Presets de aspectos visuais (compartilhados) */}
+        <div className="space-y-2 rounded-lg border border-[rgba(59,130,246,0.12)] bg-[rgba(59,130,246,0.03)] p-3">
+          <div className="flex items-center justify-between gap-2">
+            <Label>Presets salvos</Label>
+            <Button type="button" variant="outline" size="sm" onClick={() => setSaveOpen(true)}>
+              <Save className="mr-2 h-4 w-4" /> Salvar preferencias
+            </Button>
+          </div>
+          {presets.length === 0 ? (
+            <p className="text-xs text-[#94A3B8]">
+              Nenhum preset salvo. Salve estes aspectos visuais para reutilizar em outros carrosseis.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {presets.map((p) => (
+                <div key={p.id} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => applyPreset(p)}
+                    className="flex items-center gap-1.5 rounded-lg border border-[rgba(59,130,246,0.15)] px-2.5 py-1.5 text-xs text-[#94A3B8] transition-all hover:border-[rgba(59,130,246,0.3)] hover:text-[#3B82F6]"
+                  >
+                    <Bookmark className="h-3.5 w-3.5" />
+                    <span>{p.name}</span>
+                  </button>
+                  {myUserId === p.created_by && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDeletePreset(p.id)}
+                      title="Excluir preset"
+                      className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Image Style */}
         <div className="space-y-2">
           <Label>Estilo das Imagens</Label>
@@ -311,6 +429,53 @@ export function VisualSettingsStep({ initial, onBack, onGenerate, isGenerating }
             )}
           </Button>
         </div>
+
+        {/* Dialog: salvar preferencias como preset */}
+        <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Salvar preferencias</DialogTitle>
+              <DialogDescription>
+                Guarda estes aspectos visuais (estilo, paleta, proporcao, imagens de
+                referencia, prompt e resolucao) como um preset reutilizavel. Fica
+                disponivel para todos os membros.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="preset-name">Nome do preset</Label>
+              <Input
+                id="preset-name"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void handleSavePreset();
+                  }
+                }}
+                placeholder="Ex: Print do Twitter - esportes"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSaveOpen(false)}
+                disabled={savingPreset}
+              >
+                Cancelar
+              </Button>
+              <Button type="button" onClick={() => void handleSavePreset()} disabled={savingPreset}>
+                {savingPreset ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+                ) : (
+                  <><Save className="mr-2 h-4 w-4" /> Salvar</>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
