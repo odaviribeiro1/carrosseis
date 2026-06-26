@@ -14,7 +14,7 @@ const layouts: Record<'capa' | 'conteudo' | 'cta', SlideLayout> = {
     slot,
     blocks: [
       { kind: 'header', variant: 'social', gapPct: 4 },
-      { kind: 'post', gapPct: 4 },
+      { kind: 'post', gapPct: 7 },
       { kind: 'slot', flex: 1, minPct: 26 },
       { kind: 'footer' },
     ],
@@ -25,7 +25,7 @@ const layouts: Record<'capa' | 'conteudo' | 'cta', SlideLayout> = {
     slot,
     blocks: [
       { kind: 'header', variant: 'social', gapPct: 4 },
-      { kind: 'post', gapPct: 4 },
+      { kind: 'post', gapPct: 7 },
       { kind: 'slot', flex: 1, minPct: 24 },
       { kind: 'footer' },
     ],
@@ -37,7 +37,7 @@ const layouts: Record<'capa' | 'conteudo' | 'cta', SlideLayout> = {
     slot,
     blocks: [
       { kind: 'header', variant: 'social', gapPct: 4 },
-      { kind: 'post', gapPct: 4 },
+      { kind: 'post', gapPct: 7 },
       { kind: 'slot', flex: 1, minPct: 18 },
       { kind: 'cta', gapPct: 0 },
     ],
