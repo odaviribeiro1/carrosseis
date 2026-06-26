@@ -12,6 +12,9 @@ interface CarouselPreviewProps {
   slides: SlideContent[];
   preset: Preset;
   brandKit?: BrandKitData | null;
+  accountName?: string;
+  accountHandle?: string;
+  avatarUrl?: string | null;
   onUpdateSlide?: (position: number, field: keyof SlideContent, value: string) => void;
   onAccept: () => void;
   onReject: () => void;
@@ -43,6 +46,9 @@ export function CarouselPreview({
   slides,
   preset,
   brandKit,
+  accountName,
+  accountHandle,
+  avatarUrl,
   onUpdateSlide,
   onAccept,
   onReject,
@@ -80,6 +86,9 @@ export function CarouselPreview({
                 slideType={toSlideType(slide.type)}
                 tokens={tokens}
                 content={{ title: slide.headline, body: slide.body, cta: slide.cta }}
+                accountName={accountName}
+                accountHandle={accountHandle}
+                avatarUrl={avatarUrl}
                 scale={thumbScale}
                 fontFaces={fonts}
               />

@@ -50,6 +50,7 @@ export function EditorPage() {
   const [slides, setSlides] = useState<RefineSlide[]>([]);
   const [preset, setPreset] = useState<Preset>(getPreset(null));
   const [brandKit, setBrandKit] = useState<BrandKitData | null>(null);
+  const [social, setSocial] = useState<{ name?: string; handle?: string; avatar_url?: string } | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [refinePrompt, setRefinePrompt] = useState('');
   const [refineImage, setRefineImage] = useState<string | null>(null);
@@ -112,7 +113,7 @@ export function EditorPage() {
       if (!client) return;
       try {
         const [{ data: carousel }, { data, error }] = await Promise.all([
-          client.from('carousels').select('preset_id, brand_kit_id').eq('id', id).maybeSingle(),
+          client.from('carousels').select('preset_id, brand_kit_id, social_profile').eq('id', id).maybeSingle(),
           client
             .from('carousel_slides')
             .select('id, position, slide_type, text_content, slot_image_url, image_url, content, image_prompt, current_version')
@@ -122,6 +123,7 @@ export function EditorPage() {
         if (error) throw error;
         if (ignore) return;
         if (carousel?.preset_id) setPreset(getPreset(carousel.preset_id as string));
+        setSocial((carousel?.social_profile ?? null) as typeof social);
         const bkId = carousel?.brand_kit_id as string | null;
         (bkId ? loadBrandKitById(bkId) : loadDefaultBrandKit())
           .then((bk) => !ignore && setBrandKit(bk))
@@ -452,6 +454,9 @@ export function EditorPage() {
                 tokens={tokens}
                 content={slide.text}
                 slotImageUrl={slide.slotImageUrl}
+                accountName={social?.name}
+                accountHandle={social?.handle}
+                avatarUrl={social?.avatar_url}
                 scale={thumbScale}
                 fontFaces={fonts}
               />
@@ -499,6 +504,9 @@ export function EditorPage() {
                 tokens={tokens}
                 content={active.text}
                 slotImageUrl={active.slotImageUrl}
+                accountName={social?.name}
+                accountHandle={social?.handle}
+                avatarUrl={social?.avatar_url}
                 scale={centerScale}
                 fontFaces={fonts}
               />
@@ -605,6 +613,9 @@ export function EditorPage() {
               tokens={tokens}
               content={slide.text}
               slotImageUrl={slide.slotImageUrl}
+              accountName={social?.name}
+              accountHandle={social?.handle}
+              avatarUrl={social?.avatar_url}
               scale={1}
               fontFaces={fonts}
             />

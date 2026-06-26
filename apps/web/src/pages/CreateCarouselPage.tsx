@@ -34,7 +34,7 @@ import { buildSlotPrompt } from '@/lib/ai/buildSlotPrompt';
 import { generateArtDirection } from '@/lib/ai/generateArtDirection';
 import type { ArtDirection } from '@content-hub/shared';
 import { getInstanceImageProvider } from '@/lib/imageProvider';
-import { PRESETS, DEFAULT_PRESET_ID, getPreset } from '@/lib/presets';
+import { PRESETS, DEFAULT_PRESET_ID, getPreset, isSocialPreset } from '@/lib/presets';
 import type { SlideType, SlideText } from '@/lib/presets/types';
 import { mergeTokens, brandFontFaces } from '@/lib/presets/mergeTokens';
 import { PresetThumbnail } from '@/components/render/PresetThumbnail';
@@ -236,6 +236,12 @@ export function CreateCarouselPage() {
   }, []);
   // Renderers offscreen 1:1 (por position) para medir o slot antes de gerar a imagem.
   const slotRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  // Identidade social (presets Post do X): nome, @ e foto de perfil.
+  const [socialName, setSocialName] = useState('');
+  const [socialHandle, setSocialHandle] = useState('');
+  const [socialAvatar, setSocialAvatar] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [visualSettings, setVisualSettings] = useState<VisualSettings>(defaultVisualSettings);
   // Conteudo extraido editavel na tela de Configuracao (origens Instagram/YouTube).
   const [extractedDraft, setExtractedDraft] = useState('');
@@ -283,6 +289,40 @@ export function CreateCarouselPage() {
     setValue('slideCount', DEPTH_CONFIG[next].mid);
   }
 
+  // Upload da foto de perfil (header social) -> Storage publico -> URL.
+  async function handleAvatarUpload(file: File | undefined) {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      toast.error('Use PNG, JPG ou WEBP.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Imagem muito grande (max 5MB).');
+      return;
+    }
+    setUploadingAvatar(true);
+    try {
+      const client = getSupabaseClient();
+      if (!client) throw new Error('Supabase nao configurado');
+      const { data: { user } } = await client.auth.getUser();
+      if (!user) throw new Error('Nao autenticado');
+      const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+      const path = `avatars/${user.id}/${Date.now()}.${ext}`;
+      const { error } = await client.storage.from('slide-images').upload(path, file, {
+        contentType: file.type,
+        upsert: true,
+      });
+      if (error) throw error;
+      const url = client.storage.from('slide-images').getPublicUrl(path).data.publicUrl;
+      setSocialAvatar(`${url}?t=${Date.now()}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao enviar foto');
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  }
+
   function onSubmitConfig(data: ConfigFormValues) {
     if (!isExtracted && !data.topic?.trim()) {
       setTopicError('Tema e obrigatorio');
@@ -304,7 +344,7 @@ export function CreateCarouselPage() {
       if (!client) return;
       try {
         const [{ data: carousel }, { data: slidesData }, { data: vs }] = await Promise.all([
-          client.from('carousels').select('ai_input, preset_id, brand_kit_id').eq('id', editingId).single(),
+          client.from('carousels').select('ai_input, preset_id, brand_kit_id, social_profile').eq('id', editingId).single(),
           client
             .from('carousel_slides')
             .select('position, content')
@@ -324,6 +364,12 @@ export function CreateCarouselPage() {
         const slides = rows.map((r) => r.content as SlideContent);
         setGeneratedSlides(slides);
         if (carousel?.preset_id) setValue('presetId', carousel.preset_id as string);
+        const sp = (carousel?.social_profile ?? null) as { name?: string; handle?: string; avatar_url?: string } | null;
+        if (sp) {
+          setSocialName(sp.name ?? '');
+          setSocialHandle(sp.handle ?? '');
+          setSocialAvatar(sp.avatar_url ?? null);
+        }
 
         if (vs) {
           setVisualSettings({
@@ -695,6 +741,9 @@ export function CreateCarouselPage() {
         image_provider: imageProvider,
         preset_id: cfg?.presetId ?? watch('presetId') ?? DEFAULT_PRESET_ID,
         brand_kit_id: (cfg?.brandKitId ?? watch('brandKitId') ?? '') || null,
+        social_profile: isSocialPreset(cfg?.presetId ?? watch('presetId'))
+          ? { name: socialName.trim(), handle: socialHandle.trim(), avatar_url: socialAvatar }
+          : null,
         updated_at: new Date().toISOString(),
       };
 
@@ -1067,7 +1116,7 @@ export function CreateCarouselPage() {
         {step === 2 && (
           <Card>
             <CardHeader>
-              <CardTitle>Configuracao</CardTitle>
+              <CardTitle>Configuração</CardTitle>
               <CardDescription>Defina os parametros de geracao.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -1223,6 +1272,52 @@ export function CreateCarouselPage() {
                   </div>
                 </div>
 
+                {/* Identidade do post (apenas presets estilo Post do X) */}
+                {isSocialPreset(presetId) && (
+                  <div className="space-y-3 rounded-xl border border-[rgba(59,130,246,0.15)] bg-[rgba(59,130,246,0.03)] p-3">
+                    <Label>Identidade do post (Post do X)</Label>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={uploadingAvatar}
+                        className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[rgba(59,130,246,0.25)] bg-[#0A0A0F] text-[10px] text-[#94A3B8]"
+                        title="Foto de perfil"
+                      >
+                        {uploadingAvatar ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : socialAvatar ? (
+                          <img src={socialAvatar} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          'Foto'
+                        )}
+                      </button>
+                      <div className="grid flex-1 grid-cols-2 gap-2">
+                        <Input
+                          placeholder="Nome (ex: Davi Ribeiro)"
+                          value={socialName}
+                          onChange={(e) => setSocialName(e.target.value)}
+                        />
+                        <Input
+                          placeholder="@usuario"
+                          value={socialHandle}
+                          onChange={(e) => setSocialHandle(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={(e) => void handleAvatarUpload(e.target.files?.[0])}
+                    />
+                    <p className="text-[10px] text-[#94A3B8]">
+                      Aparece no topo de cada slide (avatar, nome, selo azul e @). Deixe em branco para usar o placeholder.
+                    </p>
+                  </div>
+                )}
+
                 {/* Brand Kit (cores/fontes/logo aplicados ao preset) */}
                 {brandKits.length > 0 && (
                   <div className="space-y-2">
@@ -1269,6 +1364,9 @@ export function CreateCarouselPage() {
             slides={generatedSlides}
             preset={getPreset(presetId)}
             brandKit={brandKit}
+            accountName={socialName}
+            accountHandle={socialHandle}
+            avatarUrl={socialAvatar}
             onAccept={acceptCarousel}
             onSaveDraft={saveDraft}
             isAccepting={isAccepting}
@@ -1312,6 +1410,9 @@ export function CreateCarouselPage() {
                     slideType={toSlideType(slide.type)}
                     tokens={tokens}
                     content={toSlideText(slide)}
+                    accountName={socialName}
+                    accountHandle={socialHandle}
+                    avatarUrl={socialAvatar}
                     scale={1}
                     fontFaces={fonts}
                   />
