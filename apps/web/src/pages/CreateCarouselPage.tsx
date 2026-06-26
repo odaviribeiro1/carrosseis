@@ -13,8 +13,6 @@ import {
   Youtube,
   ArrowRight,
   ArrowLeft,
-  CheckSquare,
-  Square,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -190,7 +188,6 @@ export function CreateCarouselPage() {
   const [editedCaption, setEditedCaption] = useState('');
 
   // Carrossel: selecao de slides + OCR
-  const [selectedSlides, setSelectedSlides] = useState<Set<number>>(new Set());
   const [isOcring, setIsOcring] = useState(false);
   const [ocrResults, setOcrResults] = useState<Array<{ position: number; text: string }>>([]);
 
@@ -339,7 +336,6 @@ export function CreateCarouselPage() {
   function resetExtraction() {
     setScrape(null);
     setEditedCaption('');
-    setSelectedSlides(new Set());
     setOcrResults([]);
     setTranscript('');
     setPostOcrText('');
@@ -413,11 +409,17 @@ export function CreateCarouselPage() {
           setPostOcrText((odata.results?.[0]?.text ?? '').trim());
           toast.success('Texto extraido');
         } else if (source === 'ig_carousel') {
-          // Carrossel: usuario escolhe quais slides extrair manualmente.
+          // Carrossel: OCR automatico de todos os slides apos a extracao.
           if (result.images.length === 0) throw new Error('Slides do carrossel nao encontrados');
-          // Default: todos selecionados.
-          setSelectedSlides(new Set(result.images.map((_, i) => i)));
-          toast.success(`${result.images.length} slides encontrados — selecione e extraia o texto`);
+          setIsOcring(true);
+          const ocrRes = await client.functions.invoke('ocr-images', {
+            body: { image_urls: result.images },
+          });
+          if (ocrRes.error) throw new Error(ocrRes.error.message || 'Erro no OCR');
+          const odata = ocrRes.data as { results?: Array<{ url: string; text: string }>; error?: string };
+          if (odata?.error) throw new Error(odata.error);
+          setOcrResults((odata.results ?? []).map((r, i) => ({ position: i + 1, text: r.text })));
+          toast.success(`Texto extraido de ${result.images.length} slide(s)`);
         }
       }
     } catch (err) {
@@ -427,47 +429,6 @@ export function CreateCarouselPage() {
       setIsTranscribing(false);
       setIsOcring(false);
     }
-  }
-
-  async function runCarouselOcr() {
-    if (!scrape || scrape.images.length === 0) return;
-    const indexes = Array.from(selectedSlides).sort((a, b) => a - b);
-    if (indexes.length === 0) {
-      setExtractError('Selecione pelo menos um slide.');
-      return;
-    }
-    setExtractError('');
-    setIsOcring(true);
-    try {
-      const client = getSupabaseClient();
-      if (!client) throw new Error('Supabase nao configurado');
-      const urls = indexes.map((i) => scrape.images[i]);
-      const { data, error } = await client.functions.invoke('ocr-images', {
-        body: { image_urls: urls },
-      });
-      if (error) throw new Error(error.message || 'Erro no OCR');
-      const result = data as { results?: Array<{ url: string; text: string }>; error?: string };
-      if (result?.error) throw new Error(result.error);
-      const items = (result.results ?? []).map((r, i) => ({
-        position: (indexes[i] ?? i) + 1,
-        text: r.text,
-      }));
-      setOcrResults(items);
-      toast.success(`Texto extraido de ${items.length} slide(s)`);
-    } catch (err) {
-      setExtractError(err instanceof Error ? err.message : 'Erro no OCR');
-    } finally {
-      setIsOcring(false);
-    }
-  }
-
-  function toggleSlide(index: number) {
-    setSelectedSlides((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
   }
 
   function buildFinalContent(): string {
@@ -967,50 +928,16 @@ export function CreateCarouselPage() {
                   {/* Preview do carrossel IG com checkboxes */}
                   {source === 'ig_carousel' && scrape && scrape.images.length > 0 && (
                     <div className="space-y-3 rounded-lg border border-[rgba(59,130,246,0.15)] bg-[rgba(59,130,246,0.04)] p-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
                         <p className="text-sm font-medium text-[#F8FAFC]">
                           Slides extraidos ({scrape.images.length})
                         </p>
-                        <Button
-                          variant={ocrResults.length === 0 ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => void runCarouselOcr()}
-                          disabled={isOcring || selectedSlides.size === 0}
-                        >
-                          {isOcring ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Extrair Texto'}
-                        </Button>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {scrape.images.map((imgUrl, i) => {
-                          const selected = selectedSlides.has(i);
-                          return (
-                            <button
-                              key={i}
-                              type="button"
-                              onClick={() => toggleSlide(i)}
-                              className={`group relative aspect-[4/5] overflow-hidden rounded border-2 transition-all ${
-                                selected ? 'border-[#3B82F6]' : 'border-transparent opacity-60 hover:opacity-100'
-                              }`}
-                            >
-                              <img src={imgUrl} alt={`Slide ${i + 1}`} className="h-full w-full object-cover" />
-                              <div className="absolute right-1 top-1 rounded bg-black/60 p-0.5">
-                                {selected ? (
-                                  <CheckSquare className="h-4 w-4 text-[#60A5FA]" />
-                                ) : (
-                                  <Square className="h-4 w-4 text-white" />
-                                )}
-                              </div>
-                              <div className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
-                                {i + 1}
-                              </div>
-                            </button>
-                          );
-                        })}
+                        {isOcring && <Loader2 className="h-4 w-4 animate-spin text-[#60A5FA]" />}
                       </div>
 
-                      {ocrResults.length > 0 && (
-                        <div className="space-y-2 pt-2">
-                          <Label>Texto extraido por slide</Label>
+                      {ocrResults.length > 0 ? (
+                        <div className="space-y-2">
+                          <Label>Texto extraido por slide (editavel)</Label>
                           {ocrResults.map((r) => (
                             <div key={r.position} className="space-y-1">
                               <p className="text-xs text-[#94A3B8]">Slide {r.position}</p>
@@ -1027,6 +954,10 @@ export function CreateCarouselPage() {
                             </div>
                           ))}
                         </div>
+                      ) : (
+                        <p className="text-xs text-[#94A3B8]">
+                          {isOcring ? 'Extraindo texto dos slides...' : 'Nenhum texto extraido.'}
+                        </p>
                       )}
                     </div>
                   )}
