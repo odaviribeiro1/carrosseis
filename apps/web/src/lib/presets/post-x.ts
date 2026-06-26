@@ -25,7 +25,7 @@ export const postX: Preset = {
       padPct: 7.5,
       slot: { radius: 36, objectFit: 'cover' },
       blocks: [
-        { kind: 'header', gapPct: 4 },
+        { kind: 'header', variant: 'social', gapPct: 4 },
         { kind: 'title', gapPct: 2.4, scale: 1.16 },
         { kind: 'subtitle', gapPct: 4 },
         { kind: 'slot', flex: 1, minPct: 26 },
@@ -38,7 +38,7 @@ export const postX: Preset = {
       padPct: 7.5,
       slot: { radius: 36, objectFit: 'cover' },
       blocks: [
-        { kind: 'header', gapPct: 4 },
+        { kind: 'header', variant: 'social', gapPct: 4 },
         { kind: 'title', gapPct: 3 },
         { kind: 'body', gapPct: 4 },
         { kind: 'slot', flex: 1, minPct: 24 },
@@ -51,7 +51,7 @@ export const postX: Preset = {
       padPct: 7.5,
       slot: { radius: 36, objectFit: 'cover' },
       blocks: [
-        { kind: 'header', gapPct: 4 },
+        { kind: 'header', variant: 'social', gapPct: 4 },
         { kind: 'title', gapPct: 3, scale: 1.08 },
         { kind: 'body', gapPct: 4 },
         { kind: 'slot', flex: 1, minPct: 18 },

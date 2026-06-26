@@ -19,6 +19,10 @@ interface SlideRendererProps {
   content: SlideText;
   slotImageUrl?: string | null;
   logoUrl?: string | null;
+  /** Identidade social (Post do X): nome, @ e avatar. */
+  accountName?: string;
+  accountHandle?: string;
+  avatarUrl?: string | null;
   /** Escala de exibição (1 = export 1:1). Ex.: 0.25 para preview. */
   scale?: number;
   /** Fontes (com url) a pré-carregar antes de renderizar. */
@@ -90,7 +94,19 @@ function Slot({
  * preview = geração = export.
  */
 export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(function SlideRenderer(
-  { preset, slideType, tokens, content, slotImageUrl, logoUrl, scale = 1, fontFaces = [] },
+  {
+    preset,
+    slideType,
+    tokens,
+    content,
+    slotImageUrl,
+    logoUrl,
+    accountName,
+    accountHandle,
+    avatarUrl,
+    scale = 1,
+    fontFaces = [],
+  },
   ref,
 ) {
   const [fontsReady, setFontsReady] = useState(fontFaces.length === 0);
@@ -117,9 +133,8 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
   const layout = preset.layouts[slideType];
   const c = tokens.colors;
   const pad = px(layout.padPct ?? 8, FRAME_W);
-  const showAccentBar = tokens.decoration === 'accent-bar';
-  const showTopRule = tokens.decoration === 'top-rule';
-  const showCornerDot = tokens.decoration === 'corner-dot';
+  const acctName = accountName || 'Seu Nome';
+  const acctHandle = accountHandle || '@seu_usuario';
 
   function blockEl(block: LayoutBlock, key: number, opts: { onImageBg?: boolean } = {}) {
     const gap = block.gapPct ? px(block.gapPct, FRAME_H) : 0;
@@ -128,22 +143,58 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
 
     switch (block.kind) {
       case 'header':
-        return (
-          <div key={key} style={{ ...base, display: 'flex', alignItems: 'center', gap: 20, height: 40 }}>
-            {logoUrl ? (
-              <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ height: '100%', objectFit: 'contain' }} />
-            ) : (
-              <div style={{ width: 20, height: 20, borderRadius: 999, background: c.accent, flexShrink: 0 }} />
-            )}
-            {showTopRule && <div style={{ flex: 1, height: 3, borderRadius: 999, background: c.accent }} />}
+        // Post do X: lockup social (avatar + nome + selo + @).
+        if (block.variant === 'social') {
+          const nameColor = onBg ? '#FFFFFF' : c.text;
+          const handleColor = onBg ? 'rgba(255,255,255,0.7)' : c.textMuted;
+          return (
+            <div key={key} style={{ ...base, display: 'flex', alignItems: 'center', gap: 22 }}>
+              <div
+                style={{
+                  width: 92,
+                  height: 92,
+                  borderRadius: 999,
+                  flexShrink: 0,
+                  overflow: 'hidden',
+                  background: avatarUrl ? 'transparent' : c.surface,
+                }}
+              >
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" crossOrigin="anonymous" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <svg viewBox="0 0 24 24" width="92" height="92" style={{ display: 'block' }}>
+                    <circle cx="12" cy="12" r="12" fill={c.surface} />
+                    <circle cx="12" cy="9.2" r="3.6" fill={c.textMuted} />
+                    <path d="M4.5 20c0-4 3.4-6 7.5-6s7.5 2 7.5 6" fill={c.textMuted} />
+                  </svg>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 800, fontSize: 38, letterSpacing: -0.6, color: nameColor }}>
+                    {acctName}
+                  </span>
+                  <svg viewBox="0 0 24 24" width="38" height="38" style={{ flexShrink: 0 }} aria-hidden>
+                    <circle cx="12" cy="12" r="11" fill={c.accent} />
+                    <path d="M7 12.4l3.2 3.2L17 8.8" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <span style={{ fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: 32, color: handleColor }}>
+                  {acctHandle}
+                </span>
+              </div>
+            </div>
+          );
+        }
+        // Demais presets: sem decoração no topo. Logo do Brand Kit se houver; senão nada.
+        return logoUrl ? (
+          <div key={key} style={{ ...base, display: 'flex', alignItems: 'center', height: 44 }}>
+            <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ height: '100%', objectFit: 'contain' }} />
           </div>
-        );
+        ) : null;
       case 'title':
         return (
           <div key={key} style={base}>
-            {showAccentBar && (
-              <div style={{ width: 96, height: 10, borderRadius: 999, background: c.accent, marginBottom: 24 }} />
-            )}
             <div style={textStyle(scaleType(tokens.typography.title, block.scale), onBg ? '#FFFFFF' : c.text)}>
               {content.title}
             </div>
@@ -252,21 +303,6 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
   return (
     <div style={{ width: FRAME_W * scale, height: FRAME_H * scale, overflow: 'hidden', flex: '0 0 auto' }}>
       <div ref={ref} style={frameBase}>
-        {showCornerDot && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 54,
-              right: 64,
-              zIndex: 2,
-              width: 18,
-              height: 18,
-              borderRadius: 999,
-              background: c.accent,
-              boxShadow: `0 0 24px ${c.accent}`,
-            }}
-          />
-        )}
         {inner}
       </div>
     </div>

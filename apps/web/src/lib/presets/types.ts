@@ -54,6 +54,8 @@ export interface LayoutBlock {
   gapPct?: number;
   /** Multiplica o tamanho da fonte do token (ex.: capa com título maior). */
   scale?: number;
+  /** Variante do bloco. 'social' => header com avatar/nome/@/selo (Post do X). */
+  variant?: 'social';
 }
 
 /** Aparência do slot de imagem (tamanho vem do layout flex). */
