@@ -1,9 +1,12 @@
 import type { Preset } from './types';
 import { postX } from './post-x';
 import { editorial } from './editorial';
+import { boldMinimal } from './bold-minimal';
+import { magazine } from './magazine';
+import { techDark } from './tech-dark';
 
-// Registry dos presets curados. Fase 1: 2 presets. Fase 2 adiciona 3.
-export const PRESETS: Preset[] = [postX, editorial];
+// Registry dos 5 presets curados.
+export const PRESETS: Preset[] = [postX, editorial, boldMinimal, magazine, techDark];
 
 export const DEFAULT_PRESET_ID = postX.id;
 

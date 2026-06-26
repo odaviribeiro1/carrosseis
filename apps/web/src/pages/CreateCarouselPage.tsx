@@ -37,7 +37,7 @@ import { getInstanceImageProvider } from '@/lib/imageProvider';
 import { PRESETS, DEFAULT_PRESET_ID, getPreset } from '@/lib/presets';
 import type { SlideType, SlideText } from '@/lib/presets/types';
 import { PresetThumbnail } from '@/components/render/PresetThumbnail';
-import { loadDefaultBrandKit, type BrandKitData } from '@/lib/brandKit';
+import { loadDefaultBrandKit, listBrandKits, loadBrandKitById, type BrandKitData } from '@/lib/brandKit';
 
 type ContentSource = 'text' | 'ig_carousel' | 'ig_post' | 'ig_reel' | 'youtube';
 
@@ -78,6 +78,7 @@ const configSchema = z.object({
   depth: z.enum(['superficial', 'normal', 'aprofundado']).default('normal'),
   slideCount: z.number().min(3).max(15),
   presetId: z.string().default(DEFAULT_PRESET_ID),
+  brandKitId: z.string().default(''),
 });
 
 type ConfigFormValues = z.infer<typeof configSchema>;
@@ -224,10 +225,11 @@ export function CreateCarouselPage() {
   const [forceArtDirection, setForceArtDirection] = useState(false);
   const [generatedSlides, setGeneratedSlides] = useState<SlideContent[]>([]);
   const [configValues, setConfigValues] = useState<ConfigFormValues | null>(null);
-  // Brand Kit default (overrides de cor/fonte/logo aplicados ao preset).
+  // Brand Kit (overrides de cor/fonte/logo aplicados ao preset) + lista p/ seletor.
   const [brandKit, setBrandKit] = useState<BrandKitData | null>(null);
+  const [brandKits, setBrandKits] = useState<BrandKitData[]>([]);
   useEffect(() => {
-    loadDefaultBrandKit().then(setBrandKit).catch(() => setBrandKit(null));
+    listBrandKits().then(setBrandKits).catch(() => setBrandKits([]));
   }, []);
   const [visualSettings, setVisualSettings] = useState<VisualSettings>(defaultVisualSettings);
   // Conteudo extraido editavel na tela de Configuracao (origens Instagram/YouTube).
@@ -253,6 +255,7 @@ export function CreateCarouselPage() {
       depth: 'normal',
       slideCount: DEPTH_CONFIG.normal.mid,
       presetId: DEFAULT_PRESET_ID,
+      brandKitId: '',
     },
   });
 
@@ -261,6 +264,13 @@ export function CreateCarouselPage() {
 
   const toneMode = watch('toneMode');
   const presetId = (watch('presetId') ?? DEFAULT_PRESET_ID) as string;
+  const brandKitId = (watch('brandKitId') ?? '') as string;
+
+  // Carrega o Brand Kit selecionado ('' = default, se houver).
+  useEffect(() => {
+    const load = brandKitId ? loadBrandKitById(brandKitId) : loadDefaultBrandKit();
+    load.then(setBrandKit).catch(() => setBrandKit(null));
+  }, [brandKitId]);
 
   // Profundidade dirige o default de quantidade de slides (faixa central).
   function handleDepthChange(next: Depth) {
@@ -289,7 +299,7 @@ export function CreateCarouselPage() {
       if (!client) return;
       try {
         const [{ data: carousel }, { data: slidesData }, { data: vs }] = await Promise.all([
-          client.from('carousels').select('ai_input, preset_id').eq('id', editingId).single(),
+          client.from('carousels').select('ai_input, preset_id, brand_kit_id').eq('id', editingId).single(),
           client
             .from('carousel_slides')
             .select('position, content')
@@ -334,6 +344,7 @@ export function CreateCarouselPage() {
           depth: (ai.depth as Depth) ?? 'normal',
           slideCount: (ai.slide_count as number) ?? slides.length,
           presetId: (carousel?.preset_id as string) ?? DEFAULT_PRESET_ID,
+          brandKitId: (carousel?.brand_kit_id as string) ?? '',
         };
         setConfigValues(cfg);
         if (typeof ai.content === 'string') setContent(ai.content);
@@ -678,6 +689,7 @@ export function CreateCarouselPage() {
         ai_input: aiInput,
         image_provider: imageProvider,
         preset_id: cfg?.presetId ?? watch('presetId') ?? DEFAULT_PRESET_ID,
+        brand_kit_id: (cfg?.brandKitId ?? watch('brandKitId') ?? '') || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -1201,6 +1213,25 @@ export function CreateCarouselPage() {
                     })}
                   </div>
                 </div>
+
+                {/* Brand Kit (cores/fontes/logo aplicados ao preset) */}
+                {brandKits.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Brand Kit</Label>
+                    <select
+                      value={brandKitId}
+                      onChange={(e) => setValue('brandKitId', e.target.value)}
+                      className="h-10 w-full rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-3 text-sm text-[#F8FAFC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6]"
+                    >
+                      <option value="">Estilo do preset (sem Brand Kit)</option>
+                      {brandKits.map((bk) => (
+                        <option key={bk.id} value={bk.id}>
+                          {bk.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">

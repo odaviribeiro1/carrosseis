@@ -31,16 +31,36 @@ function toOverrides(row: BrandKitRow): BrandKitData {
   };
 }
 
+const COLS = 'id, name, colors, fonts, logo_url';
+
 /** Carrega o Brand Kit default (se houver) e mapeia para overrides do preset. */
 export async function loadDefaultBrandKit(): Promise<BrandKitData | null> {
   const client = getSupabaseClient();
   if (!client) return null;
   const { data, error } = await client
     .from('brand_kits')
-    .select('id, name, colors, fonts, logo_url')
+    .select(COLS)
     .eq('is_default', true)
     .limit(1)
     .maybeSingle();
+  if (error || !data) return null;
+  return toOverrides(data as BrandKitRow);
+}
+
+/** Lista todos os Brand Kits (para o seletor). */
+export async function listBrandKits(): Promise<BrandKitData[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  const { data, error } = await client.from('brand_kits').select(COLS).order('name');
+  if (error || !data) return [];
+  return (data as BrandKitRow[]).map(toOverrides);
+}
+
+/** Carrega um Brand Kit por id. */
+export async function loadBrandKitById(id: string): Promise<BrandKitData | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data, error } = await client.from('brand_kits').select(COLS).eq('id', id).maybeSingle();
   if (error || !data) return null;
   return toOverrides(data as BrandKitRow);
 }

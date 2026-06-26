@@ -120,9 +120,10 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
     cta: content.cta,
   };
 
-  // Barra de destaque (decoração 'accent-bar') sob o header, opcional.
+  // Decoração opcional do preset.
   const showAccentBar = tokens.decoration === 'accent-bar';
   const showTopRule = tokens.decoration === 'top-rule';
+  const showCornerDot = tokens.decoration === 'corner-dot';
 
   return (
     <div
@@ -147,6 +148,22 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
       >
         {/* Slot de imagem primeiro (fica atrás do texto sobreposto, ex.: capa Editorial) */}
         {layout.imageSlot && <Slot slot={layout.imageSlot} url={slotImageUrl} />}
+
+        {/* Decoração 'corner-dot': ponto de acento no canto superior direito */}
+        {showCornerDot && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 54,
+              right: 64,
+              width: 18,
+              height: 18,
+              borderRadius: 999,
+              background: c.accent,
+              boxShadow: `0 0 24px ${c.accent}`,
+            }}
+          />
+        )}
 
         {/* Header: logo (esq) + barra de marca */}
         {layout.header && (

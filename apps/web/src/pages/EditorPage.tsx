@@ -18,10 +18,10 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { getSupabaseClient } from '@/lib/supabase';
-import { downloadComposedZip } from '@/lib/export/compose';
-import { getPreset, type Preset, type SlideType, type SlideText, type StyleTokens } from '@/lib/presets';
+import { composeSlideBlobs, zipAndDownload } from '@/lib/export/compose';
+import { getPreset, PRESETS, type Preset, type SlideType, type SlideText, type StyleTokens } from '@/lib/presets';
 import { mergeTokens, brandFontFaces } from '@/lib/presets/mergeTokens';
-import { loadDefaultBrandKit, type BrandKitData } from '@/lib/brandKit';
+import { loadDefaultBrandKit, loadBrandKitById, type BrandKitData } from '@/lib/brandKit';
 import { SlideRenderer, FRAME_W, FRAME_H } from '@/components/render/SlideRenderer';
 
 interface RefineSlide {
@@ -103,10 +103,6 @@ export function EditorPage() {
   }, []);
 
   useEffect(() => {
-    loadDefaultBrandKit().then(setBrandKit).catch(() => setBrandKit(null));
-  }, []);
-
-  useEffect(() => {
     if (!id) return;
     let ignore = false;
 
@@ -115,7 +111,7 @@ export function EditorPage() {
       if (!client) return;
       try {
         const [{ data: carousel }, { data, error }] = await Promise.all([
-          client.from('carousels').select('preset_id').eq('id', id).maybeSingle(),
+          client.from('carousels').select('preset_id, brand_kit_id').eq('id', id).maybeSingle(),
           client
             .from('carousel_slides')
             .select('id, position, slide_type, text_content, slot_image_url, image_url, content, image_prompt, current_version')
@@ -125,6 +121,10 @@ export function EditorPage() {
         if (error) throw error;
         if (ignore) return;
         if (carousel?.preset_id) setPreset(getPreset(carousel.preset_id as string));
+        const bkId = carousel?.brand_kit_id as string | null;
+        (bkId ? loadBrandKitById(bkId) : loadDefaultBrandKit())
+          .then((bk) => !ignore && setBrandKit(bk))
+          .catch(() => {});
         setSlides(
           (data ?? []).map((s) => {
             const tc = (s.text_content as SlideText | null) ?? null;
@@ -309,18 +309,53 @@ export function EditorPage() {
     if (r1.error || r2.error) toast.error('Erro ao reordenar slides');
   }
 
+  // Troca o preset do carrossel inteiro: recompoe todos os slides (mantendo
+  // conteudo e imagens dos slots). So muda o template; persiste em carousels.preset_id.
+  async function changePreset(nextId: string) {
+    const next = getPreset(nextId);
+    if (next.id === preset.id) return;
+    setPreset(next);
+    const client = getSupabaseClient();
+    if (client && id) {
+      const { error } = await client.from('carousels').update({ preset_id: next.id }).eq('id', id);
+      if (error) toast.error('Erro ao salvar preset');
+      else toast.success(`Preset alterado para ${next.name}`);
+    }
+  }
+
   async function handleDownload() {
     if (slides.length === 0) return;
     setDownloading(true);
     try {
       // Composição client-side: o MESMO SlideRenderer (offscreen, 1:1) é capturado.
-      const nodes = slides
-        .map((s) => exportRefs.current.get(s.id))
-        .filter((n): n is HTMLDivElement => Boolean(n));
-      if (nodes.length === 0) throw new Error('Nada para exportar.');
-      await downloadComposedZip(nodes, 'carrossel');
+      const ordered = [...slides].sort((a, b) => a.position - b.position);
+      const pairs = ordered
+        .map((s) => ({ slide: s, node: exportRefs.current.get(s.id) }))
+        .filter((p): p is { slide: RefineSlide; node: HTMLDivElement } => Boolean(p.node));
+      if (pairs.length === 0) throw new Error('Nada para exportar.');
+
+      const blobs = await composeSlideBlobs(pairs.map((p) => p.node));
+      await zipAndDownload(blobs, 'carrossel');
+
+      // Persiste o PNG final composto (composed_image_url) — usado pelo download do Dashboard.
       const client = getSupabaseClient();
       if (client && id) {
+        await Promise.all(
+          pairs.map(async (p, i) => {
+            try {
+              const path = `${id}/${p.slide.id}_composed.png`;
+              const up = await client.storage.from('slide-images').upload(path, blobs[i]!, {
+                contentType: 'image/png',
+                upsert: true,
+              });
+              if (up.error) return;
+              const url = client.storage.from('slide-images').getPublicUrl(path).data.publicUrl;
+              await client.from('carousel_slides').update({ composed_image_url: `${url}?t=${Date.now()}` }).eq('id', p.slide.id);
+            } catch {
+              /* best-effort: falha de upload nao impede o download local */
+            }
+          }),
+        );
         await client.from('carousels').update({ downloaded_at: new Date().toISOString() }).eq('id', id);
       }
       toast.success('Download iniciado');
@@ -370,8 +405,25 @@ export function EditorPage() {
             <Pencil className="mr-2 h-4 w-4" /> Voltar para a etapa anterior
           </Button>
         </div>
-        <div className="flex items-center gap-2 text-sm text-[#94A3B8]">
-          <Layers className="h-4 w-4" /> {slides.length} slides
+        <div className="flex items-center gap-3 text-sm text-[#94A3B8]">
+          <span className="flex items-center gap-2">
+            <Layers className="h-4 w-4" /> {slides.length} slides
+          </span>
+          <label className="flex items-center gap-1.5">
+            <span className="text-xs">Preset</span>
+            <select
+              value={preset.id}
+              disabled={busy}
+              onChange={(e) => void changePreset(e.target.value)}
+              className="rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-2 py-1 text-xs text-[#F8FAFC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] disabled:opacity-50"
+            >
+              {PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <Button variant="outline" size="sm" onClick={() => void handleDownload()} disabled={downloading}>
           {downloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}

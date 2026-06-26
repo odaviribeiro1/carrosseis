@@ -24,7 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { getSupabaseClient } from '@/lib/supabase';
-import { downloadImagesAsZip } from '@/lib/export/download-zip';
+import { downloadUrlsAsZip } from '@/lib/export/compose';
 import type { Carousel, CarouselStatus } from '@content-hub/shared';
 
 export function DashboardPage() {
@@ -75,7 +75,7 @@ export function DashboardPage() {
     try {
       const { data: slidesData, error } = await client
         .from('carousel_slides')
-        .select('position, image_url')
+        .select('position, composed_image_url, image_url')
         .eq('carousel_id', carousel.id)
         .order('position', { ascending: true });
 
@@ -85,12 +85,16 @@ export function DashboardPage() {
         return;
       }
 
+      // PNG final composto (preset + texto + slot). image_url e fallback legado.
       const images = slidesData
-        .filter((s) => s.image_url)
-        .map((s) => ({ position: s.position as number, url: s.image_url as string }));
+        .map((s) => ({
+          position: s.position as number,
+          url: (s.composed_image_url as string | null) ?? (s.image_url as string | null),
+        }))
+        .filter((s): s is { position: number; url: string } => Boolean(s.url));
 
       if (images.length === 0) {
-        toast.error('Esse carrossel ainda nao tem imagens geradas.');
+        toast.error('Abra o carrossel no editor e baixe uma vez para gerar o PNG final.');
         return;
       }
 
@@ -100,7 +104,7 @@ export function DashboardPage() {
         .replace(/[^a-zA-Z0-9-_]+/g, '-')
         .toLowerCase() || 'carrossel';
 
-      await downloadImagesAsZip(images, safeName);
+      await downloadUrlsAsZip(images, safeName);
       // Marca como baixado (alimenta a aba/badge "Baixado").
       await client
         .from('carousels')
