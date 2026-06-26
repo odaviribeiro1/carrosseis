@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, X, RefreshCw, Save, Loader2, Type, ChevronDown, Pencil, Wand2 } from 'lucide-react';
+import { Check, RefreshCw, Save, Loader2, Type, ChevronDown, Pencil, Wand2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -443,7 +443,7 @@ export function CarouselPreview({
         {/* Acoes */}
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={onReject} className="flex-1" disabled={busy}>
-            <X className="mr-2 h-4 w-4" />
+            <ArrowLeft className="mr-2 h-4 w-4" />
             Voltar
           </Button>
           <Button variant="outline" onClick={onRegenerate} className="flex-1" disabled={busy}>

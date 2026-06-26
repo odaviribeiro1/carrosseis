@@ -294,7 +294,7 @@ export function VisualSettingsStep({ initial, onBack, onGenerate, isGenerating }
           <p className="text-[10px] text-[#94A3B8]">
             {settings.slideMode === 'text_only'
               ? 'Cada slide tera apenas texto sobre um fundo limpo.'
-              : 'O Nano Banana adiciona imagens e elementos visuais junto do texto em cada slide.'}
+              : 'A IA gera, em cada slide, uma imagem relacionada ao conteudo daquele slide junto do texto.'}
           </p>
         </div>
 

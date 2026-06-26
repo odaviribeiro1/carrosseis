@@ -72,8 +72,13 @@ export function buildSlidePrompt(args: BuildSlidePromptArgs): string {
       'CONTEÚDO DO SLIDE: APENAS TEXTO sobre um fundo limpo e minimalista. NÃO inclua fotos, cenas, personagens nem ilustrações elaboradas — foco total na tipografia, hierarquia e legibilidade.',
     );
   } else {
+    const subject = [content.headline, content.body].filter((t) => t?.trim()).join(' — ');
     lines.push(
-      'CONTEÚDO DO SLIDE: IMAGENS + TEXTO. Inclua imagens, cenas ou elementos visuais ricos e relevantes ao tema, integrados ao texto de forma harmônica e com alta legibilidade.',
+      'CONTEÚDO DO SLIDE: IMAGENS + TEXTO. Além do texto, gere uma cena ou imagem que ILUSTRE ' +
+        `VISUALMENTE o assunto ESPECÍFICO deste slide: "${subject}". Use elementos visuais ` +
+        'concretos e diretamente relacionados a esse assunto (objetos, pessoas, ambiente, ' +
+        'metáforas visuais pertinentes) — NÃO use um fundo decorativo genérico ou abstrato sem ' +
+        'relação com o conteúdo. Integre imagem e texto com harmonia e alta legibilidade.',
     );
   }
 
