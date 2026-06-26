@@ -4,9 +4,21 @@ import { type GenOpts, type GenResult, type ImageProvider, ProviderError } from 
 // 4:5 nativo (1024x1280, multiplo de 16). O Konva escala para 1080x1350 no
 // editor/export, sem normalizacao server-side.
 const MODEL = 'gpt-image-2';
-const SIZE = '1024x1280'; // 4:5 exato; W e H divisiveis por 16
+const DEFAULT_SIZE = '1024x1280'; // 4:5 exato; W e H divisiveis por 16
 const QUALITY = 'medium';
 const MAX_RETRIES = 3;
+
+// Aceita apenas "WxH" com numeros divisiveis por 16 e ratio entre 1:3 e 3:1.
+function safeSize(size?: string): string {
+  const m = (size ?? '').match(/^(\d+)x(\d+)$/);
+  if (!m) return DEFAULT_SIZE;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (!w || !h || w % 16 !== 0 || h % 16 !== 0) return DEFAULT_SIZE;
+  const r = w / h;
+  if (r < 1 / 3 || r > 3) return DEFAULT_SIZE;
+  return `${w}x${h}`;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -69,8 +81,9 @@ async function readImage(resp: Response): Promise<Uint8Array> {
 }
 
 export const gptImage: ImageProvider = {
-  async generate({ prompt, refs, apiKey }: GenOpts): Promise<GenResult> {
+  async generate({ prompt, refs, apiKey, size }: GenOpts): Promise<GenResult> {
     const auth = { Authorization: `Bearer ${apiKey}` };
+    const imgSize = safeSize(size);
 
     // Com imagens de referencia -> /v1/images/edits (multipart, image[] multiplas).
     if (refs.length > 0) {
@@ -79,7 +92,7 @@ export const gptImage: ImageProvider = {
         const form = new FormData();
         form.append('model', MODEL);
         form.append('prompt', prompt);
-        form.append('size', SIZE);
+        form.append('size', imgSize);
         form.append('quality', QUALITY);
         form.append('output_format', 'png');
         for (const blob of blobs) form.append('image[]', blob, 'ref.png');
@@ -100,7 +113,7 @@ export const gptImage: ImageProvider = {
         body: JSON.stringify({
           model: MODEL,
           prompt,
-          size: SIZE,
+          size: imgSize,
           quality: QUALITY,
           output_format: 'png',
           n: 1,

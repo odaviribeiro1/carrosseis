@@ -34,7 +34,7 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) return json({ error: 'Nao autenticado' }, 401);
 
-    const { slide_id, prompt, reference_image, reference_images } = await req.json();
+    const { slide_id, prompt, reference_image, reference_images, size, aspect } = await req.json();
     if (!slide_id) return json({ error: 'slide_id e obrigatorio' }, 400);
     if (!prompt || !String(prompt).trim()) return json({ error: 'Prompt e obrigatorio' }, 400);
 
@@ -100,7 +100,13 @@ Deno.serve(async (req: Request) => {
     let bytes: Uint8Array;
     let modelUsed: string;
     try {
-      const result = await provider.generate({ prompt: String(prompt), refs, apiKey });
+      const result = await provider.generate({
+        prompt: String(prompt),
+        refs,
+        apiKey,
+        size: typeof size === 'string' ? size : undefined,
+        aspect: typeof aspect === 'string' ? aspect : undefined,
+      });
       bytes = result.bytes;
       modelUsed = result.modelUsed;
     } catch (err) {

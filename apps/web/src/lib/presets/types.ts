@@ -34,31 +34,43 @@ export interface StyleTokens {
   decoration?: 'none' | 'accent-bar' | 'top-rule' | 'corner-dot';
 }
 
-/** Zona retangular em % de 1080x1350 (origem topo-esquerda). */
-export interface LayoutZone {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+// ---------------------------------------------------------------------------
+// Modelo de layout FLEX. Cada slide é uma sequência ordenada de blocos. O bloco
+// 'slot' (imagem) usa flex:1 e CONSOME o espaço que o texto deixou — texto curto
+// => slot alto (sem faixa branca). O canvas total continua 1080x1350.
+// ---------------------------------------------------------------------------
 
+export type SlideMode = 'stack' | 'split' | 'full-bleed';
+export type BlockKind = 'header' | 'title' | 'subtitle' | 'body' | 'cta' | 'slot' | 'footer' | 'spacer';
 export type ObjectFit = 'cover' | 'contain';
 
-export interface ImageSlot extends LayoutZone {
+export interface LayoutBlock {
+  kind: BlockKind;
+  /** Cresce para preencher o espaço livre (tipicamente só o 'slot'). */
+  flex?: number;
+  /** Altura mínima em % do frame (segurança p/ o slot nunca sumir). */
+  minPct?: number;
+  /** Margem inferior em % do frame (respiro entre blocos). */
+  gapPct?: number;
+}
+
+/** Aparência do slot de imagem (tamanho vem do layout flex). */
+export interface ImageSlotStyle {
   radius: number; // px
-  overlay?: string; // cor rgba sobre a imagem (ex.: escurecer p/ legibilidade)
+  overlay?: string; // gradiente/cor sobre a imagem (legibilidade no full-bleed)
   objectFit: ObjectFit;
 }
 
-/** Zonas de um tipo de slide. title sempre presente; demais opcionais. */
 export interface SlideLayout {
-  header?: LayoutZone;
-  title: LayoutZone;
-  subtitle?: LayoutZone;
-  body?: LayoutZone;
-  cta?: LayoutZone;
-  imageSlot?: ImageSlot;
-  footer?: LayoutZone;
+  mode: SlideMode;
+  /** Padding interno do frame em % (todas as bordas) — default 8. */
+  padPct?: number;
+  /** Blocos na ordem vertical (stack/full-bleed) ou da coluna de texto (split). */
+  blocks: LayoutBlock[];
+  /** No modo 'split': largura da coluna de imagem em % (resto é texto). */
+  splitImagePct?: number;
+  /** Aparência do slot. */
+  slot: ImageSlotStyle;
 }
 
 export interface Preset {

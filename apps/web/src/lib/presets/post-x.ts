@@ -1,6 +1,7 @@
 import type { Preset } from './types';
 
-// "Post do X" — limpo, tipografia forte, cartão claro, slot de imagem em destaque.
+// "Post do X" — limpo, tipografia forte, cartão claro. Stack: o slot abaixo do
+// texto cresce e preenche o espaço restante.
 export const postX: Preset = {
   id: 'post-x',
   name: 'Post do X',
@@ -11,38 +12,47 @@ export const postX: Preset = {
       body: { family: 'Inter', sizePx: 38, weight: 400, lineHeight: 1.4, letterSpacing: -0.2 },
       cta: { family: 'Inter', sizePx: 36, weight: 700, lineHeight: 1.2, letterSpacing: 0 },
     },
-    colors: {
-      bg: '#FFFFFF',
-      surface: '#F4F6F8',
-      text: '#0F1419',
-      textMuted: '#536471',
-      accent: '#1D9BF0',
-    },
+    colors: { bg: '#FFFFFF', surface: '#F4F6F8', text: '#0F1419', textMuted: '#536471', accent: '#1D9BF0' },
     radius: 28,
     shadow: '0 8px 40px rgba(15,20,25,0.08)',
     decoration: 'accent-bar',
   },
   layouts: {
     capa: {
-      header: { x: 8, y: 7, w: 84, h: 7 },
-      title: { x: 8, y: 17, w: 84, h: 34 },
-      subtitle: { x: 8, y: 52, w: 84, h: 12 },
-      imageSlot: { x: 8, y: 66, w: 84, h: 27, radius: 28, objectFit: 'cover' },
-      footer: { x: 8, y: 94, w: 84, h: 4 },
+      mode: 'stack',
+      padPct: 8,
+      slot: { radius: 28, objectFit: 'cover' },
+      blocks: [
+        { kind: 'header', gapPct: 3 },
+        { kind: 'title', gapPct: 2.5 },
+        { kind: 'subtitle', gapPct: 3 },
+        { kind: 'slot', flex: 1, minPct: 22 },
+        { kind: 'footer' },
+      ],
     },
     conteudo: {
-      header: { x: 8, y: 7, w: 84, h: 7 },
-      title: { x: 8, y: 16, w: 84, h: 16 },
-      imageSlot: { x: 8, y: 34, w: 84, h: 34, radius: 28, objectFit: 'cover' },
-      body: { x: 8, y: 71, w: 84, h: 22 },
-      footer: { x: 8, y: 94, w: 84, h: 4 },
+      mode: 'stack',
+      padPct: 8,
+      slot: { radius: 28, objectFit: 'cover' },
+      blocks: [
+        { kind: 'header', gapPct: 3 },
+        { kind: 'title', gapPct: 3 },
+        { kind: 'body', gapPct: 3 },
+        { kind: 'slot', flex: 1, minPct: 22 },
+        { kind: 'footer' },
+      ],
     },
     cta: {
-      header: { x: 8, y: 7, w: 84, h: 7 },
-      title: { x: 8, y: 20, w: 84, h: 24 },
-      body: { x: 8, y: 46, w: 84, h: 16 },
-      imageSlot: { x: 8, y: 63, w: 84, h: 20, radius: 28, objectFit: 'cover' },
-      cta: { x: 8, y: 85, w: 84, h: 9 },
+      mode: 'stack',
+      padPct: 8,
+      slot: { radius: 28, objectFit: 'cover' },
+      blocks: [
+        { kind: 'header', gapPct: 3 },
+        { kind: 'title', gapPct: 3 },
+        { kind: 'body', gapPct: 3 },
+        { kind: 'slot', flex: 1, minPct: 18 },
+        { kind: 'cta', gapPct: 0 },
+      ],
     },
   },
 };

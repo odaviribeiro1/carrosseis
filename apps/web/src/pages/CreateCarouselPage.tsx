@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -36,7 +36,10 @@ import type { ArtDirection } from '@content-hub/shared';
 import { getInstanceImageProvider } from '@/lib/imageProvider';
 import { PRESETS, DEFAULT_PRESET_ID, getPreset } from '@/lib/presets';
 import type { SlideType, SlideText } from '@/lib/presets/types';
+import { mergeTokens, brandFontFaces } from '@/lib/presets/mergeTokens';
 import { PresetThumbnail } from '@/components/render/PresetThumbnail';
+import { SlideRenderer, FRAME_W, FRAME_H } from '@/components/render/SlideRenderer';
+import { measureSlotSize } from '@/lib/render/measureSlot';
 import { loadDefaultBrandKit, listBrandKits, loadBrandKitById, type BrandKitData } from '@/lib/brandKit';
 
 type ContentSource = 'text' | 'ig_carousel' | 'ig_post' | 'ig_reel' | 'youtube';
@@ -231,6 +234,8 @@ export function CreateCarouselPage() {
   useEffect(() => {
     listBrandKits().then(setBrandKits).catch(() => setBrandKits([]));
   }, []);
+  // Renderers offscreen 1:1 (por position) para medir o slot antes de gerar a imagem.
+  const slotRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const [visualSettings, setVisualSettings] = useState<VisualSettings>(defaultVisualSettings);
   // Conteudo extraido editavel na tela de Configuracao (origens Instagram/YouTube).
   const [extractedDraft, setExtractedDraft] = useState('');
@@ -791,11 +796,15 @@ export function CreateCarouselPage() {
           const slideId = slideIdByPosition.get(slide.position);
           if (!slideId) return;
           try {
+            // Mede o slot (offscreen 1:1) para gerar no ratio exato daquele slide.
+            const { size, aspect } = measureSlotSize(slotRefs.current.get(slide.position));
             const { data, error } = await client.functions.invoke('generate-slide-image', {
               body: {
                 slide_id: slideId,
                 prompt: prompts[i],
                 reference_images: visualSettings.referenceImages,
+                size,
+                aspect,
               },
             });
             if (error) throw new Error(await extractInvokeError(error));
@@ -1281,6 +1290,36 @@ export function CreateCarouselPage() {
             }}
           />
         )}
+
+        {/* Renderers offscreen 1:1 para medir o slot de cada slide antes de gerar. */}
+        {step === 4 && (() => {
+          const preset = getPreset(presetId);
+          const tokens = mergeTokens(preset, brandKit);
+          const fonts = brandFontFaces(brandKit);
+          return (
+            <div style={{ position: 'fixed', left: -99999, top: 0, pointerEvents: 'none', opacity: 0 }} aria-hidden>
+              {generatedSlides.map((slide) => (
+                <div
+                  key={slide.position}
+                  ref={(el) => {
+                    if (el) slotRefs.current.set(slide.position, el);
+                    else slotRefs.current.delete(slide.position);
+                  }}
+                  style={{ width: FRAME_W, height: FRAME_H }}
+                >
+                  <SlideRenderer
+                    preset={preset}
+                    slideType={toSlideType(slide.type)}
+                    tokens={tokens}
+                    content={toSlideText(slide)}
+                    scale={1}
+                    fontFaces={fonts}
+                  />
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

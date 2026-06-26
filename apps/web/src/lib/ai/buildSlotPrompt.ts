@@ -24,7 +24,9 @@ export function buildSlotPrompt(params: {
       'Apenas imagem fotografica/ilustrativa limpa, sem qualquer caractere escrito.',
     `Tema/assunto a ilustrar visualmente: "${subject}". Use elementos concretos e ` +
       'diretamente relacionados a esse assunto (objetos, pessoas, ambiente, cena ou metafora visual pertinente).',
-    'Composicao com area de respiro e foco claro; boa para recorte em enquadramento retrato.',
+    'Composicao: sujeito principal CENTRALIZADO, com margem de seguranca nas bordas; ' +
+      'nada importante encostado nas extremidades (pode haver um corte leve no encaixe). ' +
+      'Area de respiro ao redor do foco.',
   ];
 
   if (artDirection) {

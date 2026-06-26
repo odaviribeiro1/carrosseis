@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { getSupabaseClient } from '@/lib/supabase';
 import { composeSlideBlobs, zipAndDownload } from '@/lib/export/compose';
+import { measureSlotSize } from '@/lib/render/measureSlot';
 import { getPreset, PRESETS, type Preset, type SlideType, type SlideText, type StyleTokens } from '@/lib/presets';
 import { mergeTokens, brandFontFaces } from '@/lib/presets/mergeTokens';
 import { loadDefaultBrandKit, loadBrandKitById, type BrandKitData } from '@/lib/brandKit';
@@ -175,8 +176,11 @@ export function EditorPage() {
     }
     if (!prompt.trim()) throw new Error('Este slide nao tem prompt base. Gere o carrossel novamente.');
 
+    // Mede o slot (offscreen 1:1) para gerar a imagem no ratio exato.
+    const { size, aspect } = measureSlotSize(exportRefs.current.get(slide.id));
+
     const { data, error } = await client.functions.invoke('generate-slide-image', {
-      body: { slide_id: slide.id, prompt, reference_image: refineImage ?? undefined },
+      body: { slide_id: slide.id, prompt, reference_image: refineImage ?? undefined, size, aspect },
     });
     if (error) throw error;
     const result = data as { slot_image_url?: string; image_url?: string; version?: number; error?: string };

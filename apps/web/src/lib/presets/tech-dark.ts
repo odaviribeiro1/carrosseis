@@ -1,6 +1,7 @@
 import type { Preset } from './types';
 
-// "Tech Dark" — quase preto, acento neon, cantos retos, ar de produto/tech.
+// "Tech Dark" — quase preto, acento neon, ar de produto/tech. Stack; o slot
+// preenche o espaço restante.
 export const techDark: Preset = {
   id: 'tech-dark',
   name: 'Tech Dark',
@@ -11,38 +12,47 @@ export const techDark: Preset = {
       body: { family: 'Inter', sizePx: 37, weight: 400, lineHeight: 1.45, letterSpacing: 0 },
       cta: { family: 'Inter', sizePx: 33, weight: 700, lineHeight: 1.15, letterSpacing: 1, transform: 'uppercase' },
     },
-    colors: {
-      bg: '#08090C',
-      surface: '#11141A',
-      text: '#EAF2FF',
-      textMuted: '#7C8696',
-      accent: '#00E0A4',
-    },
+    colors: { bg: '#08090C', surface: '#11141A', text: '#EAF2FF', textMuted: '#7C8696', accent: '#00E0A4' },
     radius: 14,
     shadow: '0 0 40px rgba(0,224,164,0.18)',
     decoration: 'corner-dot',
   },
   layouts: {
     capa: {
-      header: { x: 8, y: 7, w: 84, h: 6 },
-      title: { x: 8, y: 16, w: 84, h: 32 },
-      subtitle: { x: 8, y: 49, w: 84, h: 10 },
-      imageSlot: { x: 8, y: 61, w: 84, h: 31, radius: 14, objectFit: 'cover' },
-      footer: { x: 8, y: 93, w: 84, h: 5 },
+      mode: 'stack',
+      padPct: 8,
+      slot: { radius: 14, objectFit: 'cover' },
+      blocks: [
+        { kind: 'header', gapPct: 3 },
+        { kind: 'title', gapPct: 2.5 },
+        { kind: 'subtitle', gapPct: 3 },
+        { kind: 'slot', flex: 1, minPct: 24 },
+        { kind: 'footer' },
+      ],
     },
     conteudo: {
-      header: { x: 8, y: 7, w: 84, h: 6 },
-      title: { x: 8, y: 15, w: 84, h: 18 },
-      imageSlot: { x: 8, y: 35, w: 84, h: 32, radius: 14, objectFit: 'cover' },
-      body: { x: 8, y: 70, w: 84, h: 22 },
-      footer: { x: 8, y: 93, w: 84, h: 5 },
+      mode: 'stack',
+      padPct: 8,
+      slot: { radius: 14, objectFit: 'cover' },
+      blocks: [
+        { kind: 'header', gapPct: 3 },
+        { kind: 'title', gapPct: 3 },
+        { kind: 'slot', flex: 1, minPct: 22 },
+        { kind: 'body', gapPct: 2 },
+        { kind: 'footer' },
+      ],
     },
     cta: {
-      header: { x: 8, y: 7, w: 84, h: 6 },
-      title: { x: 8, y: 22, w: 84, h: 24 },
-      body: { x: 8, y: 48, w: 84, h: 16 },
-      imageSlot: { x: 8, y: 64, w: 84, h: 18, radius: 14, objectFit: 'cover' },
-      cta: { x: 8, y: 84, w: 84, h: 10 },
+      mode: 'stack',
+      padPct: 8,
+      slot: { radius: 14, objectFit: 'cover' },
+      blocks: [
+        { kind: 'header', gapPct: 3 },
+        { kind: 'title', gapPct: 3 },
+        { kind: 'body', gapPct: 3 },
+        { kind: 'slot', flex: 1, minPct: 16 },
+        { kind: 'cta', gapPct: 0 },
+      ],
     },
   },
 };

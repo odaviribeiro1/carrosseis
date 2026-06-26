@@ -23,8 +23,11 @@ async function toInlinePart(
   return { inlineData: { mimeType: 'image/png', data: ref } };
 }
 
+const GEMINI_ASPECTS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9']);
+
 export const nanoBanana: ImageProvider = {
-  async generate({ prompt, refs, apiKey }: GenOpts): Promise<GenResult> {
+  async generate({ prompt, refs, apiKey, aspect }: GenOpts): Promise<GenResult> {
+    const aspectRatio = aspect && GEMINI_ASPECTS.has(aspect) ? aspect : '3:4';
     const referenceParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
     for (const ref of refs) referenceParts.push(await toInlinePart(ref));
 
@@ -42,7 +45,7 @@ export const nanoBanana: ImageProvider = {
               contents: [{ parts: [{ text: prompt }, ...referenceParts] }],
               generationConfig: {
                 responseModalities: ['TEXT', 'IMAGE'],
-                imageConfig: { aspectRatio: '3:4' },
+                imageConfig: { aspectRatio },
               },
             }),
           },

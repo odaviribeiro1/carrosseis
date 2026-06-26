@@ -7,6 +7,10 @@ export interface GenOpts {
   prompt: string;
   refs: string[];
   apiKey: string;
+  /** Tamanho "WxH" (gpt-image-2). Default 1024x1280 (4:5). */
+  size?: string;
+  /** Aspect ratio "W:H" para o Gemini (Nano). Default 3:4. */
+  aspect?: string;
 }
 
 export interface GenResult {

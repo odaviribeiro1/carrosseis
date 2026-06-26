@@ -4,10 +4,9 @@ import type {
   SlideType,
   StyleTokens,
   SlideText,
-  LayoutZone,
   TypeStyle,
-  ImageSlot,
-  TextRole,
+  ImageSlotStyle,
+  LayoutBlock,
 } from '@/lib/presets/types';
 
 export const FRAME_W = 1080;
@@ -26,15 +25,7 @@ interface SlideRendererProps {
   fontFaces?: Array<{ family: string; url: string }>;
 }
 
-function zoneStyle(z: LayoutZone): React.CSSProperties {
-  return {
-    position: 'absolute',
-    left: `${z.x}%`,
-    top: `${z.y}%`,
-    width: `${z.w}%`,
-    height: `${z.h}%`,
-  };
-}
+const px = (pct: number, base: number) => (pct / 100) * base;
 
 function textStyle(ts: TypeStyle, color: string): React.CSSProperties {
   return {
@@ -47,22 +38,32 @@ function textStyle(ts: TypeStyle, color: string): React.CSSProperties {
     fontStyle: ts.italic ? 'italic' : 'normal',
     color,
     margin: 0,
-    overflow: 'hidden',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
   };
 }
 
-function Slot({ slot, url }: { slot: ImageSlot; url?: string | null }) {
+function Slot({
+  slot,
+  url,
+  style,
+}: {
+  slot: ImageSlotStyle;
+  url?: string | null;
+  style: React.CSSProperties;
+}) {
   return (
-    <div style={{ ...zoneStyle(slot), borderRadius: slot.radius, overflow: 'hidden' }}>
+    <div data-slot style={{ ...style, borderRadius: slot.radius, overflow: 'hidden', position: 'relative' }}>
       {url ? (
         <img
           src={url}
           alt=""
           crossOrigin="anonymous"
-          style={{ width: '100%', height: '100%', objectFit: slot.objectFit, display: 'block' }}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: slot.objectFit,
+            objectPosition: 'center',
+            display: 'block',
+          }}
         />
       ) : (
         <div
@@ -73,18 +74,17 @@ function Slot({ slot, url }: { slot: ImageSlot; url?: string | null }) {
           }}
         />
       )}
-      {slot.overlay && (
-        <div style={{ position: 'absolute', inset: 0, background: slot.overlay }} />
-      )}
+      {slot.overlay && <div style={{ position: 'absolute', inset: 0, background: slot.overlay }} />}
     </div>
   );
 }
 
 /**
- * Renderiza UM slide no frame fixo 1080x1350 a partir do preset + tokens.
- * O MESMO componente é usado no preview (scale<1) e no export (scale=1 via
- * html-to-image), garantindo saída pixel-idêntica. O `ref` aponta para o frame
- * 1:1 interno (alvo da captura).
+ * Renderiza UM slide no frame fixo 1080x1350 via CSS flex. O bloco 'slot'
+ * (imagem) usa flex:1 e consome o espaço que o texto deixou (texto curto =>
+ * slot alto, sem faixa branca). O MESMO componente é usado no preview (scale<1),
+ * na medição (1:1, lê [data-slot]) e no export (html-to-image, 1:1) — garantindo
+ * preview = geração = export.
  */
 export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(function SlideRenderer(
   { preset, slideType, tokens, content, slotImageUrl, logoUrl, scale = 1, fontFaces = [] },
@@ -113,61 +113,20 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
 
   const layout = preset.layouts[slideType];
   const c = tokens.colors;
-  const roleText: Record<TextRole, string> = {
-    title: content.title,
-    subtitle: content.body,
-    body: content.body,
-    cta: content.cta,
-  };
-
-  // Decoração opcional do preset.
+  const pad = px(layout.padPct ?? 8, FRAME_W);
   const showAccentBar = tokens.decoration === 'accent-bar';
   const showTopRule = tokens.decoration === 'top-rule';
   const showCornerDot = tokens.decoration === 'corner-dot';
 
-  return (
-    <div
-      style={{
-        width: FRAME_W * scale,
-        height: FRAME_H * scale,
-        overflow: 'hidden',
-        flex: '0 0 auto',
-      }}
-    >
-      <div
-        ref={ref}
-        style={{
-          width: FRAME_W,
-          height: FRAME_H,
-          position: 'relative',
-          background: c.bg,
-          transform: `scale(${scale})`,
-          transformOrigin: 'top left',
-          opacity: fontsReady ? 1 : 0.999, // força repaint quando a fonte carrega
-        }}
-      >
-        {/* Slot de imagem primeiro (fica atrás do texto sobreposto, ex.: capa Editorial) */}
-        {layout.imageSlot && <Slot slot={layout.imageSlot} url={slotImageUrl} />}
+  function blockEl(block: LayoutBlock, key: number, opts: { onImageBg?: boolean } = {}) {
+    const gap = block.gapPct ? px(block.gapPct, FRAME_H) : 0;
+    const base: React.CSSProperties = { marginBottom: gap, flexShrink: 0 };
+    const onBg = opts.onImageBg; // texto sobre imagem (full-bleed) => cor clara
 
-        {/* Decoração 'corner-dot': ponto de acento no canto superior direito */}
-        {showCornerDot && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 54,
-              right: 64,
-              width: 18,
-              height: 18,
-              borderRadius: 999,
-              background: c.accent,
-              boxShadow: `0 0 24px ${c.accent}`,
-            }}
-          />
-        )}
-
-        {/* Header: logo (esq) + barra de marca */}
-        {layout.header && (
-          <div style={{ ...zoneStyle(layout.header), display: 'flex', alignItems: 'center', gap: 16 }}>
+    switch (block.kind) {
+      case 'header':
+        return (
+          <div key={key} style={{ ...base, display: 'flex', alignItems: 'center', gap: 16, height: 48 }}>
             {logoUrl ? (
               <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ height: '100%', objectFit: 'contain' }} />
             ) : (
@@ -175,44 +134,31 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
             )}
             {showTopRule && <div style={{ flex: 1, height: 2, background: c.accent }} />}
           </div>
-        )}
-
-        {showAccentBar && layout.title && (
-          <div
-            style={{
-              position: 'absolute',
-              left: `${layout.title.x}%`,
-              top: `${layout.title.y - 1.4}%`,
-              width: 90,
-              height: 10,
-              borderRadius: 999,
-              background: c.accent,
-            }}
-          />
-        )}
-
-        {/* Título */}
-        <div style={{ ...zoneStyle(layout.title), ...textStyle(tokens.typography.title, c.text) }}>
-          {content.title}
-        </div>
-
-        {/* Subtítulo (capa) */}
-        {layout.subtitle && roleText.subtitle && (
-          <div style={{ ...zoneStyle(layout.subtitle), ...textStyle(tokens.typography.subtitle, c.textMuted) }}>
+        );
+      case 'title':
+        return (
+          <div key={key} style={base}>
+            {showAccentBar && (
+              <div style={{ width: 90, height: 10, borderRadius: 999, background: c.accent, marginBottom: 22 }} />
+            )}
+            <div style={textStyle(tokens.typography.title, onBg ? '#FFFFFF' : c.text)}>{content.title}</div>
+          </div>
+        );
+      case 'subtitle':
+        return content.body ? (
+          <div key={key} style={{ ...base, ...textStyle(tokens.typography.subtitle, onBg ? 'rgba(255,255,255,0.85)' : c.textMuted) }}>
             {content.body}
           </div>
-        )}
-
-        {/* Corpo */}
-        {layout.body && content.body && (
-          <div style={{ ...zoneStyle(layout.body), ...textStyle(tokens.typography.body, c.text) }}>
+        ) : null;
+      case 'body':
+        return content.body ? (
+          <div key={key} style={{ ...base, ...textStyle(tokens.typography.body, onBg ? 'rgba(255,255,255,0.92)' : c.text) }}>
             {content.body}
           </div>
-        )}
-
-        {/* CTA */}
-        {layout.cta && content.cta && (
-          <div style={{ ...zoneStyle(layout.cta), display: 'flex', alignItems: 'center' }}>
+        ) : null;
+      case 'cta':
+        return content.cta ? (
+          <div key={key} style={{ ...base, display: 'flex' }}>
             <span
               style={{
                 ...textStyle(tokens.typography.cta, '#FFFFFF'),
@@ -226,22 +172,104 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
               {content.cta}
             </span>
           </div>
-        )}
-
-        {/* Footer */}
-        {layout.footer && (
+        ) : null;
+      case 'footer':
+        return (
           <div
+            key={key}
             style={{
-              ...zoneStyle(layout.footer),
-              ...textStyle({ ...tokens.typography.cta, sizePx: 24, weight: 500, transform: 'none', letterSpacing: 0 }, c.textMuted),
-              flexDirection: 'row',
+              ...base,
+              ...textStyle({ ...tokens.typography.cta, sizePx: 24, weight: 500, transform: 'none', letterSpacing: 0 }, onBg ? 'rgba(255,255,255,0.7)' : c.textMuted),
+              display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
             }}
           >
             <span>{preset.name}</span>
           </div>
+        );
+      case 'spacer':
+        return <div key={key} style={{ flex: block.flex ?? 1 }} />;
+      case 'slot':
+        return (
+          <Slot
+            key={key}
+            slot={layout.slot}
+            url={slotImageUrl}
+            style={{ ...base, flex: block.flex ?? 1, minHeight: block.minPct ? px(block.minPct, FRAME_H) : 0, width: '100%' }}
+          />
+        );
+      default:
+        return null;
+    }
+  }
+
+  const frameBase: React.CSSProperties = {
+    width: FRAME_W,
+    height: FRAME_H,
+    position: 'relative',
+    background: c.bg,
+    transform: `scale(${scale})`,
+    transformOrigin: 'top left',
+    overflow: 'hidden',
+    opacity: fontsReady ? 1 : 0.999,
+  };
+
+  let inner: React.ReactNode;
+
+  if (layout.mode === 'full-bleed') {
+    // Slot de fundo cobrindo o frame; texto sobreposto (sem o bloco 'slot' no fluxo).
+    const textBlocks = layout.blocks.filter((b) => b.kind !== 'slot');
+    inner = (
+      <>
+        <Slot slot={layout.slot} url={slotImageUrl} style={{ position: 'absolute', inset: 0 }} />
+        <div style={{ position: 'absolute', inset: 0, padding: pad, display: 'flex', flexDirection: 'column' }}>
+          {textBlocks.map((b, i) => blockEl(b, i, { onImageBg: true }))}
+        </div>
+      </>
+    );
+  } else if (layout.mode === 'split') {
+    // Coluna de texto + coluna de imagem (slot preenche a altura da coluna).
+    const textBlocks = layout.blocks.filter((b) => b.kind !== 'slot');
+    const imgPct = layout.splitImagePct ?? 42;
+    inner = (
+      <div style={{ position: 'absolute', inset: 0, padding: pad, display: 'flex', flexDirection: 'row', gap: px(4, FRAME_W) }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          {textBlocks.map((b, i) => blockEl(b, i))}
+        </div>
+        <div style={{ width: `${imgPct}%`, display: 'flex' }}>
+          <Slot slot={layout.slot} url={slotImageUrl} style={{ flex: 1, width: '100%', minHeight: '100%' }} />
+        </div>
+      </div>
+    );
+  } else {
+    // stack: coluna vertical; o bloco 'slot' (flex:1) consome o espaço restante.
+    inner = (
+      <div style={{ position: 'absolute', inset: 0, padding: pad, display: 'flex', flexDirection: 'column' }}>
+        {layout.blocks.map((b, i) => blockEl(b, i))}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ width: FRAME_W * scale, height: FRAME_H * scale, overflow: 'hidden', flex: '0 0 auto' }}>
+      <div ref={ref} style={frameBase}>
+        {showCornerDot && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 54,
+              right: 64,
+              zIndex: 2,
+              width: 18,
+              height: 18,
+              borderRadius: 999,
+              background: c.accent,
+              boxShadow: `0 0 24px ${c.accent}`,
+            }}
+          />
         )}
+        {inner}
       </div>
     </div>
   );
