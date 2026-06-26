@@ -52,6 +52,8 @@ export interface LayoutBlock {
   minPct?: number;
   /** Margem inferior em % do frame (respiro entre blocos). */
   gapPct?: number;
+  /** Multiplica o tamanho da fonte do token (ex.: capa com título maior). */
+  scale?: number;
 }
 
 /** Aparência do slot de imagem (tamanho vem do layout flex). */

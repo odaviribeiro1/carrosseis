@@ -27,6 +27,9 @@ interface SlideRendererProps {
 
 const px = (pct: number, base: number) => (pct / 100) * base;
 
+const scaleType = (ts: TypeStyle, s?: number): TypeStyle =>
+  s && s !== 1 ? { ...ts, sizePx: Math.round(ts.sizePx * s) } : ts;
+
 function textStyle(ts: TypeStyle, color: string): React.CSSProperties {
   return {
     fontFamily: `'${ts.family}', sans-serif`,
@@ -126,33 +129,35 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
     switch (block.kind) {
       case 'header':
         return (
-          <div key={key} style={{ ...base, display: 'flex', alignItems: 'center', gap: 16, height: 48 }}>
+          <div key={key} style={{ ...base, display: 'flex', alignItems: 'center', gap: 20, height: 40 }}>
             {logoUrl ? (
               <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ height: '100%', objectFit: 'contain' }} />
             ) : (
-              <div style={{ width: 14, height: 14, borderRadius: 999, background: c.accent }} />
+              <div style={{ width: 20, height: 20, borderRadius: 999, background: c.accent, flexShrink: 0 }} />
             )}
-            {showTopRule && <div style={{ flex: 1, height: 2, background: c.accent }} />}
+            {showTopRule && <div style={{ flex: 1, height: 3, borderRadius: 999, background: c.accent }} />}
           </div>
         );
       case 'title':
         return (
           <div key={key} style={base}>
             {showAccentBar && (
-              <div style={{ width: 90, height: 10, borderRadius: 999, background: c.accent, marginBottom: 22 }} />
+              <div style={{ width: 96, height: 10, borderRadius: 999, background: c.accent, marginBottom: 24 }} />
             )}
-            <div style={textStyle(tokens.typography.title, onBg ? '#FFFFFF' : c.text)}>{content.title}</div>
+            <div style={textStyle(scaleType(tokens.typography.title, block.scale), onBg ? '#FFFFFF' : c.text)}>
+              {content.title}
+            </div>
           </div>
         );
       case 'subtitle':
         return content.body ? (
-          <div key={key} style={{ ...base, ...textStyle(tokens.typography.subtitle, onBg ? 'rgba(255,255,255,0.85)' : c.textMuted) }}>
+          <div key={key} style={{ ...base, ...textStyle(scaleType(tokens.typography.subtitle, block.scale), onBg ? 'rgba(255,255,255,0.85)' : c.textMuted) }}>
             {content.body}
           </div>
         ) : null;
       case 'body':
         return content.body ? (
-          <div key={key} style={{ ...base, ...textStyle(tokens.typography.body, onBg ? 'rgba(255,255,255,0.92)' : c.text) }}>
+          <div key={key} style={{ ...base, ...textStyle(scaleType(tokens.typography.body, block.scale), onBg ? 'rgba(255,255,255,0.92)' : c.text) }}>
             {content.body}
           </div>
         ) : null;
@@ -174,20 +179,13 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
           </div>
         ) : null;
       case 'footer':
-        return (
-          <div
-            key={key}
-            style={{
-              ...base,
-              ...textStyle({ ...tokens.typography.cta, sizePx: 24, weight: 500, transform: 'none', letterSpacing: 0 }, onBg ? 'rgba(255,255,255,0.7)' : c.textMuted),
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <span>{preset.name}</span>
+        // Sem nome de preset dentro do slide (white-label). Com Brand Kit, o logo
+        // ocupa o rodapé; sem logo, o footer some (não reserva espaço).
+        return logoUrl ? (
+          <div key={key} style={{ ...base, display: 'flex', alignItems: 'center', height: 40 }}>
+            <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ height: '100%', objectFit: 'contain' }} />
           </div>
-        );
+        ) : null;
       case 'spacer':
         return <div key={key} style={{ flex: block.flex ?? 1 }} />;
       case 'slot':
