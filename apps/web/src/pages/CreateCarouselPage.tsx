@@ -13,6 +13,7 @@ import {
   Youtube,
   ArrowRight,
   ArrowLeft,
+  Save,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -34,7 +35,7 @@ import { buildSlotPrompt } from '@/lib/ai/buildSlotPrompt';
 import { generateArtDirection } from '@/lib/ai/generateArtDirection';
 import type { ArtDirection } from '@content-hub/shared';
 import { getInstanceImageProvider } from '@/lib/imageProvider';
-import { getDefaultCta } from '@/lib/instanceSettings';
+import { getDefaultCta, getDefaultSocialProfile, setDefaultSocialProfile } from '@/lib/instanceSettings';
 import { PRESETS, DEFAULT_PRESET_ID, getPreset, isSocialPreset } from '@/lib/presets';
 import type { SlideType, SlideText } from '@/lib/presets/types';
 import { mergeTokens, brandFontFaces } from '@/lib/presets/mergeTokens';
@@ -242,6 +243,7 @@ export function CreateCarouselPage() {
   const [socialHandle, setSocialHandle] = useState('');
   const [socialAvatar, setSocialAvatar] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [savingSocialDefault, setSavingSocialDefault] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [visualSettings, setVisualSettings] = useState<VisualSettings>(defaultVisualSettings);
   // Conteudo extraido editavel na tela de Configuracao (origens Instagram/YouTube).
@@ -334,6 +336,42 @@ export function CreateCarouselPage() {
     const clampedCount = Math.min(dc.max, Math.max(dc.min, data.slideCount || dc.mid));
     setConfigValues({ ...data, slideCount: clampedCount });
     setStep(3);
+  }
+
+  // Carrossel novo: pré-preenche a identidade do post com o padrão salvo da
+  // instância (não sobrescreve o que o usuário já digitou). Rascunho usa a
+  // identidade do próprio carrossel (carregada abaixo).
+  useEffect(() => {
+    if (editingId) return;
+    let ignore = false;
+    void (async () => {
+      const sp = await getDefaultSocialProfile();
+      if (ignore || !sp) return;
+      setSocialName((v) => v || sp.name);
+      setSocialHandle((v) => v || sp.handle);
+      setSocialAvatar((v) => v ?? sp.avatar_url);
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [editingId]);
+
+  // Salva a identidade do post atual como padrão da instância (singleton).
+  async function handleSaveSocialDefault() {
+    setSavingSocialDefault(true);
+    try {
+      await setDefaultSocialProfile({
+        name: socialName.trim(),
+        handle: socialHandle.trim(),
+        avatar_url: socialAvatar,
+      });
+      toast.success('Identidade salva como padrao');
+    } catch (err) {
+      console.error(err);
+      toast.error('Nao foi possivel salvar (apenas o owner pode definir o padrao)');
+    } finally {
+      setSavingSocialDefault(false);
+    }
   }
 
   // Edicao de rascunho: carrega conteudo + design specs + aspectos visuais e abre na Preview.
@@ -1298,7 +1336,25 @@ export function CreateCarouselPage() {
                 {/* Identidade do post (apenas presets estilo Post do X) */}
                 {isSocialPreset(presetId) && (
                   <div className="space-y-3 rounded-xl border border-[rgba(59,130,246,0.15)] bg-[rgba(59,130,246,0.03)] p-3">
-                    <Label>Identidade do post (Post do X)</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>Identidade do post (Post do X)</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-xs"
+                        disabled={savingSocialDefault || uploadingAvatar}
+                        onClick={handleSaveSocialDefault}
+                        title="Reutiliza esta identidade em todo carrossel novo"
+                      >
+                        {savingSocialDefault ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Save className="mr-1 h-3 w-3" />
+                        )}
+                        Salvar como padrao
+                      </Button>
+                    </div>
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
@@ -1337,6 +1393,7 @@ export function CreateCarouselPage() {
                     />
                     <p className="text-[10px] text-[#94A3B8]">
                       Aparece no topo de cada slide (avatar, nome, selo azul e @). Deixe em branco para usar o placeholder.
+                      Use "Salvar como padrao" para reaproveitar esta identidade em todo carrossel novo.
                     </p>
                   </div>
                 )}
