@@ -253,20 +253,25 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
           </div>
         ) : null;
       case 'post': {
-        // Presets sociais (Post do X): título + corpo fundidos num ÚNICO bloco de
-        // texto corrido, MESMO tamanho (token `body`). A abertura (ex-título) é a
-        // primeira frase forte, em negrito, integrada ao corpo — não um elemento
-        // separado acima. A ênfase no corpo vem dos trechos marcados com **.
+        // Presets sociais (Post do X): roteiro contínuo fatiado em slides, no MESMO
+        // tamanho (token `body`). A capa abre com um gancho em negrito (a ÚNICA
+        // manchete do carrossel); os demais slides NÃO têm manchete — são só o fluxo
+        // do post (body), com ênfase nos trechos marcados com **. Um eventual título
+        // nos slides 2+ entra no fluxo (sem destaque), nunca como rótulo no topo.
         const ts = scaleType(tokens.typography.body, block.scale);
         const color = onBg ? '#FFFFFF' : c.text;
+        const isCover = slideType === 'capa';
         const hasTitle = Boolean(content.title);
         const hasBody = Boolean(content.body);
         if (!hasTitle && !hasBody) return null;
         return (
           <div key={key} style={{ ...base, ...textStyle(ts, color) }}>
-            {hasTitle && (
-              <span style={{ fontWeight: 700 }}>{richText(content.title, false)}</span>
-            )}
+            {hasTitle &&
+              (isCover ? (
+                <span style={{ fontWeight: 700 }}>{richText(content.title, false)}</span>
+              ) : (
+                richText(content.title, true)
+              ))}
             {hasTitle && hasBody ? ' ' : ''}
             {hasBody && richText(content.body, true)}
           </div>

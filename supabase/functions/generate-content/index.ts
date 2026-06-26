@@ -61,16 +61,41 @@ function buildPrompt(params: {
   const angleLine = params.angle?.trim()
     ? `Angulo/foco da adaptacao: ${params.angle.trim()}`
     : '';
-  // Formato "post do X": headline + body sao renderizados como um unico bloco de
-  // texto corrido, no mesmo tamanho; a enfase vem de negrito (markdown **trecho**),
-  // nao de tamanho. So aplicado quando o preset escolhido e social (Post do X).
-  const socialLine = params.socialFormat
-    ? `
-FORMATO POST (estilo X/Twitter) — IMPORTANTE:
-- Escreva o corpo (body) como um post real: texto corrido, natural e direto.
-- A headline e a PRIMEIRA FRASE FORTE do post (sera exibida em NEGRITO, fundida ao corpo): curta e de impacto, no maximo 1 a 2 linhas (ate ~70 caracteres). Nao a repita dentro do corpo.
-- No corpo, marque de 1 a 3 palavras ou expressoes-chave com negrito em markdown (**assim**) para dar enfase. Use SOMENTE essa marcacao; nao use #, *, _, listas ou outra formatacao.`
-    : '';
+  // Presets Twitter (Post do X): o carrossel e UM post unico, com leitura linear,
+  // escrito corrido e depois fatiado em slides — nao N blocos autonomos sobre o tema.
+  if (params.socialFormat) {
+    return `Voce e um criador de conteudo viral no X (Twitter), especialista em carrosseis que se leem como UM POST UNICO dividido em telas.
+
+Categoria do template: ${params.category}
+Publico-alvo: ${params.audience || 'geral'}
+${toneLine}
+${angleLine}
+
+<user_content>
+${params.content || params.topic}
+</user_content>
+
+PENSE EM 2 ETAPAS:
+1) Primeiro, escreva (mentalmente, sem retornar) UM UNICO post corrido sobre o tema, como um criador escreveria no X: comeco-meio-fim, um raciocinio que progride e prende a atencao ate o final.
+2) Depois, FATIE esse post em ${params.slideCount} partes nos pontos naturais de respiro (fim de um raciocinio, antes de uma virada, antes de uma pergunta). Cada parte vira um slide. NUNCA gere ${params.slideCount} blocos isolados sobre o mesmo tema.
+
+COMO ESCREVER (estilo post unico fatiado):
+- Slide 1 (type "capa"): uma ABERTURA DE GANCHO — frase curta, provocativa, que para o scroll (ex.: "Zuckerberg quer te fazer PERDER dinheiro com apostas."). Coloque-a em "headline". O "body" do slide 1 fica VAZIO ("") ou com no maximo UMA frase curta de continuacao.
+- Slides 2 a ${params.slideCount}: SEM titulo/manchete. "headline" VAZIO (""). O texto vai TODO no "body" e CONTINUA o slide anterior — pode ate completar uma frase comecada. Proibido abrir o slide com um mini-titulo-resumo.
+- CONTINUIDADE (o que cria a leitura linear): cada slide (menos o 1o) conecta ao anterior — completa uma ideia iniciada ou responde a um gancho deixado. Cada slide (menos o ultimo) idealmente deixa um fio solto / cliffhanger que puxa pro proximo (ex.: terminar com uma pergunta que o slide seguinte responde). O conjunto deve poder ser lido DE CIMA A BAIXO como um texto so.
+- ENFASE: use **negrito** (markdown) em palavras/expressoes-chave DENTRO das frases do body (ex.: "**Stories do Snapchat**", "**aposta dinheiro**") — de 1 a 3 por slide, distribuido no fluxo. NUNCA crie um titulo/manchete em negrito no topo dos slides. Use SOMENTE **assim**; nada de #, *, _ ou listas.
+- O ultimo slide fecha o raciocinio; use "cta" apenas se um convite leve fizer sentido.
+- LIMITE RIGIDO: o "body" de CADA slide deve ter no MAXIMO ${params.maxWords} palavras. Se uma parte passar do limite, corte num ponto de respiro anterior — sem espremer e sem estourar.
+- Idioma: portugues do Brasil.
+
+Retorne APENAS um JSON valido, sem texto adicional:
+{
+  "slides": [
+    { "position": 1, "type": "capa", "headline": "<gancho de abertura forte>", "body": "", "cta": "", "notes": "" },
+    { "position": 2, "type": "conteudo", "headline": "", "body": "<continuacao em fluxo, com **enfase** em palavras-chave>", "cta": "", "notes": "" }
+  ]
+}`;
+  }
 
   return `Voce e um especialista em criacao de carrosseis visuais.
 Gere o conteudo textual para um carrossel com ${params.slideCount} slides.
@@ -79,7 +104,6 @@ Categoria do template: ${params.category}
 Publico-alvo: ${params.audience || 'geral'}
 ${toneLine}
 ${angleLine}
-${socialLine}
 
 <user_content>
 ${params.content || params.topic}
