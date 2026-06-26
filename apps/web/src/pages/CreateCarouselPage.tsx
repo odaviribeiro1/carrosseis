@@ -802,9 +802,15 @@ export function CreateCarouselPage() {
         image_provider: imageProvider,
         preset_id: cfg?.presetId ?? watch('presetId') ?? DEFAULT_PRESET_ID,
         brand_kit_id: (cfg?.brandKitId ?? watch('brandKitId') ?? '') || null,
-        social_profile: isSocialPreset(cfg?.presetId ?? watch('presetId'))
-          ? { name: socialName.trim(), handle: socialHandle.trim(), avatar_url: socialAvatar }
-          : null,
+        social_profile: (() => {
+          const name = socialName.trim();
+          const handle = socialHandle.trim();
+          if (isSocialPreset(cfg?.presetId ?? watch('presetId'))) {
+            return { name, handle, avatar_url: socialAvatar };
+          }
+          // Demais presets: so o username do Instagram (canto superior esquerdo).
+          return handle ? { name: '', handle, avatar_url: null } : null;
+        })(),
         updated_at: new Date().toISOString(),
       };
 
@@ -1394,6 +1400,40 @@ export function CreateCarouselPage() {
                     <p className="text-[10px] text-[#94A3B8]">
                       Aparece no topo de cada slide (avatar, nome, selo azul e @). Deixe em branco para usar o placeholder.
                       Use "Salvar como padrao" para reaproveitar esta identidade em todo carrossel novo.
+                    </p>
+                  </div>
+                )}
+
+                {/* Username do Instagram (demais presets — canto superior esquerdo) */}
+                {!isSocialPreset(presetId) && (
+                  <div className="space-y-2 rounded-xl border border-[rgba(59,130,246,0.15)] bg-[rgba(59,130,246,0.03)] p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>Username do Instagram</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-xs"
+                        disabled={savingSocialDefault}
+                        onClick={handleSaveSocialDefault}
+                        title="Reutiliza este username em todo carrossel novo"
+                      >
+                        {savingSocialDefault ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Save className="mr-1 h-3 w-3" />
+                        )}
+                        Salvar como padrao
+                      </Button>
+                    </div>
+                    <Input
+                      placeholder="@seu_usuario"
+                      value={socialHandle}
+                      onChange={(e) => setSocialHandle(e.target.value)}
+                    />
+                    <p className="text-[10px] text-[#94A3B8]">
+                      Aparece no canto superior esquerdo de cada slide. Deixe em branco para nao exibir.
+                      Use "Salvar como padrao" para reaproveitar nos proximos carrosseis.
                     </p>
                   </div>
                 )}

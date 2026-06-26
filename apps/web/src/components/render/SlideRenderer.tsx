@@ -226,12 +226,51 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
             </div>
           );
         }
-        // Demais presets: sem decoração no topo. Logo do Brand Kit se houver; senão nada.
-        return logoUrl ? (
-          <div key={key} style={{ ...base, display: 'flex', alignItems: 'center', height: 44 }}>
-            <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ height: '100%', objectFit: 'contain' }} />
-          </div>
-        ) : null;
+        // Demais presets: topo com o username do Instagram (canto superior esquerdo)
+        // e/ou o logo do Brand Kit. Sem nenhum dos dois => nada (não reserva espaço).
+        return ((): React.ReactNode => {
+          const raw = (accountHandle ?? '').trim();
+          const ig = raw ? (raw.startsWith('@') ? raw : `@${raw}`) : '';
+          if (!ig && !logoUrl) return null;
+          const igColor = onBg ? '#FFFFFF' : c.text;
+          return (
+            <div key={key} style={{ ...base, display: 'flex', alignItems: 'center', gap: 16, height: 48 }}>
+              {logoUrl && (
+                <img src={logoUrl} alt="" crossOrigin="anonymous" style={{ height: '100%', objectFit: 'contain' }} />
+              )}
+              {ig && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="34"
+                    height="34"
+                    fill="none"
+                    stroke={igColor}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <rect x="2" y="2" width="20" height="20" rx="5.5" />
+                    <circle cx="12" cy="12" r="4.2" />
+                    <circle cx="17.6" cy="6.4" r="1.1" fill={igColor} stroke="none" />
+                  </svg>
+                  <span
+                    style={{
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 600,
+                      fontSize: 30,
+                      letterSpacing: -0.3,
+                      color: igColor,
+                    }}
+                  >
+                    {ig}
+                  </span>
+                </span>
+              )}
+            </div>
+          );
+        })();
       case 'title':
         return (
           <div key={key} style={base}>
