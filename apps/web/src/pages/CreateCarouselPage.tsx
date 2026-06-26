@@ -74,11 +74,19 @@ function truncateToWordCap(text: string, cap: number): string {
   return result.replace(/[\s,;:]+$/, '').trim();
 }
 
+const TONE_OPTIONS = [
+  { value: 'informativo', label: 'Informativo', hint: 'Direto e factual' },
+  { value: 'storytelling', label: 'Storytelling', hint: 'Narrativo, com tensao' },
+  { value: 'educativo', label: 'Educativo', hint: 'Passo a passo, didatico' },
+  { value: 'noticiario', label: 'Noticiario', hint: 'Jornalistico, sobrio' },
+] as const;
+
+const TONE_VALUES = ['informativo', 'storytelling', 'educativo', 'noticiario'] as const;
+
 const configSchema = z.object({
   topic: z.string().optional().default(''),
   angle: z.string().optional().default(''),
-  toneMode: z.enum(['original', 'custom']).default('original'),
-  toneOfVoice: z.string().optional(),
+  tone: z.enum(TONE_VALUES).default('informativo'),
   audience: z.string().optional(),
   depth: z.enum(['superficial', 'normal', 'aprofundado']).default('normal'),
   slideCount: z.number().min(3).max(15),
@@ -263,8 +271,7 @@ export function CreateCarouselPage() {
     defaultValues: {
       topic: '',
       angle: '',
-      toneMode: 'original',
-      toneOfVoice: '',
+      tone: 'informativo',
       audience: '',
       depth: 'normal',
       slideCount: DEPTH_CONFIG.normal.mid,
@@ -276,7 +283,7 @@ export function CreateCarouselPage() {
   const depth = (watch('depth') ?? 'normal') as Depth;
   const slideCountValue = watch('slideCount');
 
-  const toneMode = watch('toneMode');
+  const tone = (watch('tone') ?? 'informativo') as (typeof TONE_VALUES)[number];
   const presetId = (watch('presetId') ?? DEFAULT_PRESET_ID) as string;
   const brandKitId = (watch('brandKitId') ?? '') as string;
 
@@ -383,7 +390,7 @@ export function CreateCarouselPage() {
       if (!client) return;
       try {
         const [{ data: carousel }, { data: slidesData }, { data: vs }] = await Promise.all([
-          client.from('carousels').select('ai_input, preset_id, brand_kit_id, social_profile').eq('id', editingId).single(),
+          client.from('carousels').select('ai_input, preset_id, brand_kit_id, social_profile, tone').eq('id', editingId).single(),
           client
             .from('carousel_slides')
             .select('position, content')
@@ -425,11 +432,13 @@ export function CreateCarouselPage() {
 
         // Reconstroi a config (best-effort) a partir do ai_input salvo.
         const ai = (carousel?.ai_input ?? {}) as Record<string, unknown>;
+        const savedTone = (carousel?.tone as string) ?? (ai.tone as string) ?? 'informativo';
         const cfg: ConfigFormValues = {
           topic: (ai.topic as string) ?? '',
           angle: (ai.angle as string) ?? '',
-          toneMode: (ai.tone_mode as 'original' | 'custom') ?? 'original',
-          toneOfVoice: (ai.tone_of_voice as string) ?? '',
+          tone: (TONE_VALUES as readonly string[]).includes(savedTone)
+            ? (savedTone as ConfigFormValues['tone'])
+            : 'informativo',
           audience: (ai.audience as string) ?? '',
           depth: (ai.depth as Depth) ?? 'normal',
           slideCount: (ai.slide_count as number) ?? slides.length,
@@ -437,6 +446,7 @@ export function CreateCarouselPage() {
           brandKitId: (carousel?.brand_kit_id as string) ?? '',
         };
         setConfigValues(cfg);
+        setValue('tone', cfg.tone);
         if (typeof ai.content === 'string') setContent(ai.content);
         setStep(4);
       } catch (err) {
@@ -674,7 +684,6 @@ export function CreateCarouselPage() {
 
       const finalContent = isExtracted ? extractedDraft : buildFinalContent();
       const cap = DEPTH_CONFIG[configValues.depth].wordCap;
-      const keepOriginalTone = isExtracted && configValues.toneMode === 'original';
 
       const { data: result, error } = await client.functions.invoke('generate-content', {
         body: {
@@ -682,8 +691,8 @@ export function CreateCarouselPage() {
           content: finalContent,
           angle: configValues.angle,
           audience: configValues.audience,
-          tone_of_voice: keepOriginalTone ? '' : configValues.toneOfVoice,
-          keep_original_tone: keepOriginalTone,
+          // Tom de voz: baseline anti-IA + bloco do tom selecionado (injetado server-side).
+          tone: configValues.tone,
           slide_count: configValues.slideCount,
           max_words: cap,
           visual_settings: visual,
@@ -783,14 +792,14 @@ export function CreateCarouselPage() {
       // Modelo de imagem e global (definido na aba Credenciais); cada carrossel
       // recebe o valor atual no momento da criacao/atualizacao.
       const imageProvider = await getInstanceImageProvider();
+      const toneValue = (cfg?.tone ?? watch('tone') ?? 'informativo') as string;
       const aiInput = {
         type: source,
         content: isExtracted ? extractedDraft : content,
         topic: cfg?.topic ?? watch('topic') ?? '',
         angle: cfg?.angle ?? watch('angle') ?? '',
         audience: cfg?.audience ?? watch('audience') ?? '',
-        tone_of_voice: cfg?.toneOfVoice ?? watch('toneOfVoice') ?? '',
-        tone_mode: cfg?.toneMode ?? watch('toneMode') ?? 'original',
+        tone: toneValue,
         depth: cfg?.depth ?? watch('depth') ?? 'normal',
         slide_count: generatedSlides.length,
       };
@@ -800,6 +809,7 @@ export function CreateCarouselPage() {
         slide_count: generatedSlides.length,
         ai_input: aiInput,
         image_provider: imageProvider,
+        tone: toneValue,
         preset_id: cfg?.presetId ?? watch('presetId') ?? DEFAULT_PRESET_ID,
         brand_kit_id: (cfg?.brandKitId ?? watch('brandKitId') ?? '') || null,
         social_profile: (() => {
@@ -1230,45 +1240,33 @@ export function CreateCarouselPage() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Tom de Voz</Label>
-                    {isExtracted && (
-                      <div className="flex gap-1">
+                <div className="space-y-2">
+                  <Label>Tom de Voz</Label>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {TONE_OPTIONS.map((opt) => {
+                      const sel = tone === opt.value;
+                      return (
                         <button
+                          key={opt.value}
                           type="button"
-                          onClick={() => setValue('toneMode', 'original')}
-                          className={`h-8 flex-1 rounded-md border px-2 text-[11px] transition-colors ${
-                            toneMode === 'original'
+                          onClick={() => setValue('tone', opt.value)}
+                          className={`flex flex-col items-center gap-0.5 rounded-md border px-2 py-2 text-center transition-colors ${
+                            sel
                               ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.15)] text-[#60A5FA]'
-                              : 'border-[rgba(59,130,246,0.2)] text-[#94A3B8]'
+                              : 'border-[rgba(59,130,246,0.2)] text-[#94A3B8] hover:border-[rgba(59,130,246,0.4)]'
                           }`}
                         >
-                          Manter original
+                          <span className="text-xs font-medium">{opt.label}</span>
+                          <span className="text-[10px] opacity-70">{opt.hint}</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setValue('toneMode', 'custom')}
-                          className={`h-8 flex-1 rounded-md border px-2 text-[11px] transition-colors ${
-                            toneMode === 'custom'
-                              ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.15)] text-[#60A5FA]'
-                              : 'border-[rgba(59,130,246,0.2)] text-[#94A3B8]'
-                          }`}
-                        >
-                          Meu tom
-                        </button>
-                      </div>
-                    )}
-                    <Input
-                      {...register('toneOfVoice')}
-                      placeholder="Descontraido, profissional..."
-                      disabled={isExtracted && toneMode === 'original'}
-                    />
+                      );
+                    })}
                   </div>
-                  <div className="space-y-2">
-                    <Label>Publico-Alvo</Label>
-                    <Input {...register('audience')} placeholder="Empreendedores, designers..." />
-                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Publico-Alvo</Label>
+                  <Input {...register('audience')} placeholder="Empreendedores, designers..." />
                 </div>
 
                 <div className="space-y-2">

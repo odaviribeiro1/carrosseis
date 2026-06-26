@@ -16,6 +16,14 @@ aspectos visuais escolhidos, defina UMA direcao de arte GLOBAL, coesa, que sera
 compartilhada por TODOS os slides para garantir consistencia visual (mesma
 paleta, mesma tipografia, mesmo tratamento de fundo, mesma atmosfera).
 
+REGISTRO VISUAL OBRIGATORIO: FOTOGRAFIA REALISTA (editorial/fotojornalismo).
+Os campos visualStyle, lighting, backgroundTreatment e composition DEVEM descrever
+uma estetica de foto real tirada com camera profissional: iluminacao natural,
+texturas do mundo real, profundidade de campo, leve grao fotografico.
+PROIBIDO descrever renderizacao 3D, CGI, ilustracao, arte digital, mockups com
+glow/neon, elementos holograficos, UI futurista flutuante, fundos gradiente
+sinteticos ou superficies plasticas/glossy irreais. Pense em "foto", nao em "render".
+
 <conteudo_carrossel>
 ${params.content || '(sem conteudo textual)'}
 </conteudo_carrossel>
