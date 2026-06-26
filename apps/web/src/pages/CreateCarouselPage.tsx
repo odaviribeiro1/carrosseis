@@ -34,6 +34,7 @@ import { buildSlotPrompt } from '@/lib/ai/buildSlotPrompt';
 import { generateArtDirection } from '@/lib/ai/generateArtDirection';
 import type { ArtDirection } from '@content-hub/shared';
 import { getInstanceImageProvider } from '@/lib/imageProvider';
+import { getDefaultCta } from '@/lib/instanceSettings';
 import { PRESETS, DEFAULT_PRESET_ID, getPreset, isSocialPreset } from '@/lib/presets';
 import type { SlideType, SlideText } from '@/lib/presets/types';
 import { mergeTokens, brandFontFaces } from '@/lib/presets/mergeTokens';
@@ -610,6 +611,22 @@ export function CreateCarouselPage() {
     );
   }
 
+  // Substitui o último slide pelo CTA fixo global (se ativo). Mantém a posição.
+  async function applyDefaultCta(slides: SlideContent[]): Promise<SlideContent[]> {
+    if (slides.length === 0) return slides;
+    const cta = await getDefaultCta();
+    if (!cta?.enabled || !(cta.title.trim() || cta.body.trim() || cta.button.trim())) return slides;
+    const last = slides[slides.length - 1]!;
+    const replaced: SlideContent = {
+      ...last,
+      type: 'cta',
+      headline: cta.title.trim() || last.headline,
+      body: cta.body.trim() || last.body,
+      cta: cta.button.trim() || last.cta,
+    };
+    return [...slides.slice(0, -1), replaced];
+  }
+
   async function generateCarousel(visual: VisualSettings) {
     if (!configValues) return;
     setIsGenerating(true);
@@ -647,7 +664,10 @@ export function CreateCarouselPage() {
       // Validacao dupla do teto de palavras (pos-geracao).
       const cappedSlides = await enforceWordCap(client, parsed.data.slides, cap);
 
-      setGeneratedSlides(cappedSlides);
+      // CTA fixo global: substitui o slide final pelo CTA padrao da instancia, se ativo.
+      const withCta = await applyDefaultCta(cappedSlides);
+
+      setGeneratedSlides(withCta);
       setVisualSettings(visual);
       setStep(4);
       toast.success('Carrossel gerado com sucesso');

@@ -10,6 +10,8 @@ import {
   setInstanceImageProvider,
   type ImageProviderId,
 } from '@/lib/imageProvider';
+import { getDefaultCta, setDefaultCta, EMPTY_CTA, type DefaultCta } from '@/lib/instanceSettings';
+import { Input } from '@/components/ui/input';
 
 export function CredentialsPanel() {
   const [presence, setPresence] = useState<Record<string, { exists: boolean }>>({});
@@ -39,6 +41,25 @@ export function CredentialsPanel() {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar modelo');
     } finally {
       setSavingProvider(false);
+    }
+  }
+
+  // CTA fixo global (slide final padrão de todo carrossel).
+  const [cta, setCta] = useState<DefaultCta>(EMPTY_CTA);
+  const [savingCta, setSavingCta] = useState(false);
+  useEffect(() => {
+    getDefaultCta().then((v) => v && setCta(v)).catch(() => {/* mantem vazio */});
+  }, []);
+
+  async function saveCta() {
+    setSavingCta(true);
+    try {
+      await setDefaultCta(cta);
+      toast.success('CTA fixo atualizado');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar CTA');
+    } finally {
+      setSavingCta(false);
     }
   }
 
@@ -152,6 +173,56 @@ export function CredentialsPanel() {
                   Configure a chave do Google abaixo para o Nano Banana funcionar.
                 </p>
               )}
+            </div>
+
+            {/* CTA fixo (slide final de todo carrossel) */}
+            <div className="mb-6 rounded-2xl border border-[rgba(59,130,246,0.12)] bg-[rgba(255,255,255,0.02)] p-5">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-[13px] font-medium text-[#CBD5E1]">CTA fixo (slide final)</h3>
+                <label className="flex items-center gap-2 text-[12px] text-[#94A3B8]">
+                  <input
+                    type="checkbox"
+                    checked={cta.enabled}
+                    onChange={(e) => setCta((p) => ({ ...p, enabled: e.target.checked }))}
+                  />
+                  Ativar
+                </label>
+              </div>
+              <p className="mb-3 text-[13px] leading-5 text-[#94A3B8]">
+                Quando ativo, o último slide de todo carrossel novo usa este CTA (substitui o que a IA geraria).
+              </p>
+              <div className="space-y-2">
+                <Input
+                  placeholder="Título do CTA (ex: Gostou do conteúdo?)"
+                  value={cta.title}
+                  onChange={(e) => setCta((p) => ({ ...p, title: e.target.value }))}
+                  disabled={!cta.enabled}
+                />
+                <textarea
+                  placeholder="Corpo (ex: Me segue para mais conteúdos como este.)"
+                  value={cta.body}
+                  onChange={(e) => setCta((p) => ({ ...p, body: e.target.value }))}
+                  disabled={!cta.enabled}
+                  rows={2}
+                  className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-3 py-2 text-sm text-[#CBD5E1] disabled:opacity-50"
+                />
+                <Input
+                  placeholder="Texto do botão (ex: Seguir)"
+                  value={cta.button}
+                  onChange={(e) => setCta((p) => ({ ...p, button: e.target.value }))}
+                  disabled={!cta.enabled}
+                />
+              </div>
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void saveCta()}
+                  disabled={savingCta}
+                  className="rounded-lg border border-[rgba(59,130,246,0.25)] px-4 py-2 text-sm font-medium text-[#60A5FA] transition-all hover:bg-[rgba(59,130,246,0.08)] disabled:opacity-50"
+                >
+                  {savingCta ? 'Salvando...' : 'Salvar CTA'}
+                </button>
+              </div>
             </div>
 
             <div className={setupConfig.appCredentials.length > 6 ? 'grid gap-4 lg:grid-cols-2' : 'space-y-4'}>
