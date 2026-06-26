@@ -34,6 +34,46 @@ const px = (pct: number, base: number) => (pct / 100) * base;
 const scaleType = (ts: TypeStyle, s?: number): TypeStyle =>
   s && s !== 1 ? { ...ts, sizePx: Math.round(ts.sizePx * s) } : ts;
 
+// Marcação de negrito estilo markdown (**trecho**). Usada pelos presets sociais
+// (Post do X): o LLM marca a ênfase e o renderer aplica `font-weight` — a ênfase
+// vem do peso, não do tamanho.
+interface RichSeg {
+  text: string;
+  bold: boolean;
+}
+function parseRich(text: string): RichSeg[] {
+  const segs: RichSeg[] = [];
+  const re = /\*\*([^*]+)\*\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) segs.push({ text: text.slice(last, m.index), bold: false });
+    segs.push({ text: m[1]!, bold: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) segs.push({ text: text.slice(last), bold: false });
+  return segs;
+}
+/**
+ * Renderiza `text` removendo a marcação `**`. Com `emphasize`, os trechos
+ * marcados saem em negrito (`boldWeight`); sem `emphasize`, o texto sai limpo
+ * no peso herdado — garantindo que marcação eventual NÃO vire `**` literal nos
+ * presets não-sociais. Sem marcação, retorna a string crua (sem custo de spans).
+ */
+function richText(text: string, emphasize: boolean, boldWeight = 700): React.ReactNode {
+  const segs = parseRich(text);
+  if (!segs.some((s) => s.bold)) return text;
+  return segs.map((s, i) =>
+    emphasize && s.bold ? (
+      <span key={i} style={{ fontWeight: boldWeight }}>
+        {s.text}
+      </span>
+    ) : (
+      <span key={i}>{s.text}</span>
+    ),
+  );
+}
+
 function textStyle(ts: TypeStyle, color: string): React.CSSProperties {
   return {
     fontFamily: `'${ts.family}', sans-serif`,
@@ -196,22 +236,42 @@ export const SlideRenderer = forwardRef<HTMLDivElement, SlideRendererProps>(func
         return (
           <div key={key} style={base}>
             <div style={textStyle(scaleType(tokens.typography.title, block.scale), onBg ? '#FFFFFF' : c.text)}>
-              {content.title}
+              {richText(content.title, false)}
             </div>
           </div>
         );
       case 'subtitle':
         return content.body ? (
           <div key={key} style={{ ...base, ...textStyle(scaleType(tokens.typography.subtitle, block.scale), onBg ? 'rgba(255,255,255,0.85)' : c.textMuted) }}>
-            {content.body}
+            {richText(content.body, false)}
           </div>
         ) : null;
       case 'body':
         return content.body ? (
           <div key={key} style={{ ...base, ...textStyle(scaleType(tokens.typography.body, block.scale), onBg ? 'rgba(255,255,255,0.92)' : c.text) }}>
-            {content.body}
+            {richText(content.body, false)}
           </div>
         ) : null;
+      case 'post': {
+        // Presets sociais (Post do X): título + corpo fundidos num ÚNICO bloco de
+        // texto corrido, MESMO tamanho (token `body`). A abertura (ex-título) é a
+        // primeira frase forte, em negrito, integrada ao corpo — não um elemento
+        // separado acima. A ênfase no corpo vem dos trechos marcados com **.
+        const ts = scaleType(tokens.typography.body, block.scale);
+        const color = onBg ? '#FFFFFF' : c.text;
+        const hasTitle = Boolean(content.title);
+        const hasBody = Boolean(content.body);
+        if (!hasTitle && !hasBody) return null;
+        return (
+          <div key={key} style={{ ...base, ...textStyle(ts, color) }}>
+            {hasTitle && (
+              <span style={{ fontWeight: 700 }}>{richText(content.title, false)}</span>
+            )}
+            {hasTitle && hasBody ? ' ' : ''}
+            {hasBody && richText(content.body, true)}
+          </div>
+        );
+      }
       case 'cta':
         return content.cta ? (
           <div key={key} style={{ ...base, display: 'flex' }}>

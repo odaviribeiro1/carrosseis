@@ -53,12 +53,23 @@ function buildPrompt(params: {
   angle: string;
   maxWords: number;
   keepOriginalTone: boolean;
+  socialFormat: boolean;
 }): string {
   const toneLine = params.keepOriginalTone
     ? 'Tom de voz: mantenha FIELMENTE o tom de voz original do conteudo fornecido.'
     : `Tom de voz: ${params.toneOfVoice || 'profissional e acessivel'}`;
   const angleLine = params.angle?.trim()
     ? `Angulo/foco da adaptacao: ${params.angle.trim()}`
+    : '';
+  // Formato "post do X": headline + body sao renderizados como um unico bloco de
+  // texto corrido, no mesmo tamanho; a enfase vem de negrito (markdown **trecho**),
+  // nao de tamanho. So aplicado quando o preset escolhido e social (Post do X).
+  const socialLine = params.socialFormat
+    ? `
+FORMATO POST (estilo X/Twitter) — IMPORTANTE:
+- Escreva o corpo (body) como um post real: texto corrido, natural e direto.
+- A headline e a PRIMEIRA FRASE FORTE do post (sera exibida em NEGRITO, fundida ao corpo): curta e de impacto, no maximo 1 a 2 linhas (ate ~70 caracteres). Nao a repita dentro do corpo.
+- No corpo, marque de 1 a 3 palavras ou expressoes-chave com negrito em markdown (**assim**) para dar enfase. Use SOMENTE essa marcacao; nao use #, *, _, listas ou outra formatacao.`
     : '';
 
   return `Voce e um especialista em criacao de carrosseis visuais.
@@ -68,6 +79,7 @@ Categoria do template: ${params.category}
 Publico-alvo: ${params.audience || 'geral'}
 ${toneLine}
 ${angleLine}
+${socialLine}
 
 <user_content>
 ${params.content || params.topic}
@@ -160,6 +172,7 @@ Deno.serve(async (req: Request) => {
       slide_count = 5,
       max_words = 35,
       category = 'educacional',
+      social_format = false,
       slides: slidesToShorten = [],
       provider: providerOverride,
       model: modelOverride,
@@ -249,6 +262,7 @@ Deno.serve(async (req: Request) => {
       angle,
       maxWords: Number(max_words) || 35,
       keepOriginalTone: Boolean(keep_original_tone),
+      socialFormat: Boolean(social_format),
     });
 
     const result = await adapter.generateContent(prompt, {

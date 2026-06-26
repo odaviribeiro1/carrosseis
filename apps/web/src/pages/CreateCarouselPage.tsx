@@ -649,6 +649,9 @@ export function CreateCarouselPage() {
           slide_count: configValues.slideCount,
           max_words: cap,
           visual_settings: visual,
+          // Presets sociais (Post do X) fundem título+corpo num bloco único; o LLM
+          // marca a ênfase em negrito (**trecho**) e a abertura como frase forte.
+          social_format: isSocialPreset(configValues.presetId ?? presetId),
         },
       });
 

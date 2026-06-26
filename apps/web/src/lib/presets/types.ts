@@ -41,7 +41,11 @@ export interface StyleTokens {
 // ---------------------------------------------------------------------------
 
 export type SlideMode = 'stack' | 'split' | 'full-bleed';
-export type BlockKind = 'header' | 'title' | 'subtitle' | 'body' | 'cta' | 'slot' | 'footer' | 'spacer';
+// 'post': bloco de texto fundido (título + corpo num único bloco corrido, MESMO
+// tamanho de fonte; abertura em negrito + ênfase por trechos marcados com **).
+// Usado apenas pelos presets sociais (Post do X). Os demais presets seguem com
+// os blocos 'title'/'subtitle'/'body' separados.
+export type BlockKind = 'header' | 'title' | 'subtitle' | 'body' | 'post' | 'cta' | 'slot' | 'footer' | 'spacer';
 export type ObjectFit = 'cover' | 'contain';
 
 export interface LayoutBlock {
