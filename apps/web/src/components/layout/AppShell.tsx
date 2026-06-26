@@ -36,8 +36,9 @@ export function AppShell({ children }: AppShellProps) {
       {/* Sidebar */}
       <aside className="flex w-60 flex-col glass-sidebar">
         {/* Logo */}
-        <div className="flex h-14 items-center px-4">
-          <span className="text-lg font-bold text-[#F8FAFC]">Content Hub</span>
+        <div className="flex h-14 items-center gap-2 px-4">
+          <img src="/favicon.svg" alt="" className="h-6 w-6" />
+          <span className="text-lg font-bold text-[#F8FAFC]">Carrossel Hub</span>
         </div>
 
         <div className="h-[1px] w-full bg-[rgba(59,130,246,0.08)]" />
