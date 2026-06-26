@@ -1,10 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0';
 import { getCorsHeaders } from '../_shared/cors.ts';
 import { getCredential } from '../_shared/credentials.ts';
+import { getProvider, ProviderError } from './providers/index.ts';
 
 const BUCKET = 'slide-images';
-// Nano Banana 2 primeiro, fallback para Nano Banana Pro.
-const MODELS = ['gemini-3.1-flash-image', 'gemini-3-pro-image'];
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = await getCorsHeaders(req);
@@ -39,51 +38,14 @@ Deno.serve(async (req: Request) => {
     if (!slide_id) return json({ error: 'slide_id e obrigatorio' }, 400);
     if (!prompt || !String(prompt).trim()) return json({ error: 'Prompt e obrigatorio' }, 400);
 
-    // Converte uma referencia (data URL, URL http ou base64 puro) em inlineData.
-    async function toInlinePart(
-      ref: string,
-    ): Promise<{ inlineData: { mimeType: string; data: string } }> {
-      const dataUrl = ref.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
-      if (dataUrl) {
-        return { inlineData: { mimeType: dataUrl[1], data: dataUrl[2] } };
-      }
-      if (/^https?:\/\//.test(ref)) {
-        const imgResp = await fetch(ref);
-        if (!imgResp.ok) throw new Error(`status ${imgResp.status}`);
-        const mimeType = imgResp.headers.get('content-type') || 'image/png';
-        const buf = new Uint8Array(await imgResp.arrayBuffer());
-        let bin = '';
-        for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
-        return { inlineData: { mimeType, data: btoa(bin) } };
-      }
-      return { inlineData: { mimeType: 'image/png', data: ref } };
-    }
-
-    // Aceita uma referencia unica (refino) e/ou um array (aspectos visuais).
+    // Referencias: uma unica (refino) e/ou um array (aspectos visuais).
     const refs: string[] = [];
     if (reference_image && typeof reference_image === 'string') refs.push(reference_image);
     if (Array.isArray(reference_images)) {
       for (const r of reference_images) if (typeof r === 'string' && r) refs.push(r);
     }
-    const referenceParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
-    try {
-      for (const ref of refs) referenceParts.push(await toInlinePart(ref));
-    } catch (err) {
-      return json({ error: `Imagem de referencia invalida: ${String(err)}` }, 400);
-    }
 
-    const apiKey =
-      (await getCredential('gemini_imagen_api_key')) ??
-      (await getCredential('google_api_key')) ??
-      '';
-    if (!apiKey) {
-      return json(
-        { error: 'Credencial de imagem nao configurada (google_api_key). Configure nas credenciais.' },
-        500,
-      );
-    }
-
-    // Service role para ler/gravar slide e fazer upload no Storage.
+    // Service role para ler/gravar slide, ler o provider do carrossel e upload.
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
       db: { schema: 'content_hub' },
@@ -96,58 +58,60 @@ Deno.serve(async (req: Request) => {
       .single();
     if (slideErr || !slide) return json({ error: 'Slide nao encontrado' }, 404);
 
-    // Geracao da imagem via Gemini (Nano Banana) com fallback de modelo.
-    const refBytes = referenceParts.reduce((n, p) => n + (p.inlineData?.data?.length ?? 0), 0);
-    console.log('[slide-image] req', {
-      slide_id,
-      promptLen: String(prompt).length,
-      refCount: referenceParts.length,
-      refBytes,
-    });
-    let imageBase64 = '';
-    let usedModel = '';
-    let lastError = '';
-    for (const model of MODELS) {
-      try {
-        const resp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-            body: JSON.stringify({
-              contents: [{
-                parts: [{ text: String(prompt) }, ...referenceParts],
-              }],
-              generationConfig: {
-                responseModalities: ['TEXT', 'IMAGE'],
-                imageConfig: { aspectRatio: '3:4' },
-              },
-            }),
-          },
+    // Provider de imagem vem do carrossel (default gpt_image).
+    const { data: carousel } = await admin
+      .from('carousels')
+      .select('image_provider')
+      .eq('id', slide.carousel_id)
+      .single();
+    const { provider, name: providerName } = getProvider(carousel?.image_provider as string);
+
+    // Credencial conforme o provider.
+    let apiKey = '';
+    if (providerName === 'gpt_image') {
+      apiKey = (await getCredential('openai_api_key')) ?? '';
+      if (!apiKey) {
+        return json(
+          { error: 'Configure sua chave da OpenAI nas Credenciais para gerar imagens com GPT Image.' },
+          400,
         );
-        if (!resp.ok) {
-          lastError = `${model}: ${resp.status} - ${await resp.text()}`;
-          continue;
-        }
-        const data = await resp.json();
-        const parts = data.candidates?.[0]?.content?.parts || [];
-        for (const part of parts) {
-          if (part.inlineData?.mimeType?.startsWith('image/')) {
-            imageBase64 = part.inlineData.data;
-            usedModel = model;
-            break;
-          }
-        }
-        if (imageBase64) break;
-        lastError = `${model}: sem imagem na resposta`;
-      } catch (err) {
-        lastError = `${model}: ${String(err)}`;
+      }
+    } else {
+      apiKey =
+        (await getCredential('gemini_imagen_api_key')) ??
+        (await getCredential('google_api_key')) ??
+        '';
+      if (!apiKey) {
+        return json(
+          { error: 'Configure sua chave do Google nas Credenciais para usar o Nano Banana.' },
+          400,
+        );
       }
     }
-    if (!imageBase64) {
-      console.error('[slide-image] gemini falhou:', lastError);
-      return json({ error: `Falha ao gerar imagem. ${lastError}` }, 400);
+
+    console.log('[slide-image] req', {
+      slide_id,
+      provider: providerName,
+      promptLen: String(prompt).length,
+      refCount: refs.length,
+    });
+
+    // Gera a imagem (cada provider trata seus erros como ProviderError pt-BR).
+    let bytes: Uint8Array;
+    let modelUsed: string;
+    try {
+      const result = await provider.generate({ prompt: String(prompt), refs, apiKey });
+      bytes = result.bytes;
+      modelUsed = result.modelUsed;
+    } catch (err) {
+      const isProvider = err instanceof ProviderError;
+      const message = isProvider ? err.message : `Falha ao gerar imagem. ${String(err)}`;
+      const status = isProvider && err.code === 'RATE_LIMIT' ? 429 : 400;
+      console.error('[slide-image] falha:', providerName, message);
+      return json({ error: message }, status);
     }
+
+    console.log('[slide-image] ok', { provider: providerName, model: modelUsed });
 
     // Versionamento: arquiva a versao atual antes de sobrescrever.
     const currentVersion = (slide.current_version as number | null) ?? 1;
@@ -165,8 +129,7 @@ Deno.serve(async (req: Request) => {
       if (verErr) console.error('Erro ao arquivar versao anterior:', verErr);
     }
 
-    // Decodifica base64 -> bytes e faz upload (path unico por versao).
-    const bytes = Uint8Array.from(atob(imageBase64), (c) => c.charCodeAt(0));
+    // Upload (path unico por versao) — bytes ja em PNG, sem pos-processamento.
     const path = `${slide.carousel_id}/${slide.id}_v${newVersion}.png`;
     const { error: upErr } = await admin.storage.from(BUCKET).upload(path, bytes, {
       contentType: 'image/png',
@@ -183,7 +146,7 @@ Deno.serve(async (req: Request) => {
       .eq('id', slide.id);
     if (updErr) return json({ error: `Erro ao atualizar slide: ${updErr.message}` }, 500);
 
-    return json({ image_url: publicUrl, version: newVersion, model: usedModel });
+    return json({ image_url: publicUrl, version: newVersion, model: modelUsed, provider: providerName });
   } catch (err) {
     const cors = await getCorsHeaders(req);
     return new Response(JSON.stringify({ error: `Erro interno: ${String(err)}` }), {

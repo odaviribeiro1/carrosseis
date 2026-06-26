@@ -5,6 +5,9 @@ export type CredentialField = {
   docsUrl?: string;
   placeholder?: string;
   inputType?: 'text' | 'password';
+  // Opcional => nao aparece no wizard inicial e nao trava a finalizacao do setup.
+  // Continua editavel na aba Credenciais (Configuracoes).
+  optional?: boolean;
   validate: (value: string) => Promise<{ ok: boolean; message?: string }>;
 };
 
@@ -40,7 +43,7 @@ export const setupConfig: SetupConfig = {
       placeholder: 'sk-...',
       inputType: 'password',
       docsUrl: 'https://platform.openai.com/api-keys',
-      helpText: 'Usada para OCR de posts/carrosseis (GPT-4o Vision) e transcricao de Reels (Whisper).',
+      helpText: 'Obrigatoria. Usada para geracao de imagens (GPT Image 2), direcao de arte, OCR (GPT-4o Vision) e transcricao de Reels (Whisper).',
       validate: async (value) =>
         validateWithFormat(value, 'sk-', 20),
     },
@@ -49,8 +52,9 @@ export const setupConfig: SetupConfig = {
       label: 'Gemini (Google AI) API Key',
       placeholder: 'AIza... ou AQ....',
       inputType: 'password',
+      optional: true,
       docsUrl: 'https://aistudio.google.com/app/apikey',
-      helpText: 'Usada para geracao de imagens (Imagen) e transcricao de videos do YouTube/Shorts (Gemini).',
+      helpText: 'Opcional. Necessaria apenas para o gerador de imagem Google Nano Banana e para transcricao de videos do YouTube/Shorts (Gemini).',
       validate: async (value) =>
         // Google AI Studio emite chaves no formato classico (AIza...) e no formato novo (AQ....).
         validateWithFormat(value, ['AIza', 'AQ.'], 20),
@@ -60,8 +64,9 @@ export const setupConfig: SetupConfig = {
       label: 'Apify API Token',
       placeholder: 'apify_api_...',
       inputType: 'password',
+      optional: true,
       docsUrl: 'https://console.apify.com/account/integrations',
-      helpText: 'Usado para extrair posts/carrosseis/reels do Instagram.',
+      helpText: 'Opcional. Usado para extrair posts/carrosseis/reels do Instagram.',
       validate: async (value) =>
         validateWithFormat(value, 'apify_api_', 20),
     },

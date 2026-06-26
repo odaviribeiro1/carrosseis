@@ -90,7 +90,14 @@ export function CredentialField({
     <div className="rounded-xl border border-[rgba(59,130,246,0.12)] bg-[rgba(255,255,255,0.02)] p-5">
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
-          <label className="mb-1 block text-[13px] font-medium text-[#CBD5E1]">{field.label}</label>
+          <label className="mb-1 flex items-center gap-2 text-[13px] font-medium text-[#CBD5E1]">
+            {field.label}
+            {field.optional && (
+              <span className="rounded-full border border-[rgba(148,163,184,0.3)] px-2 py-0.5 text-[10px] font-normal text-[#94A3B8]">
+                opcional
+              </span>
+            )}
+          </label>
           {field.helpText && <p className="text-[13px] leading-5 text-[#94A3B8]">{field.helpText}</p>}
         </div>
         {field.docsUrl && (

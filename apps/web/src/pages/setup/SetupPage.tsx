@@ -156,9 +156,9 @@ export function SetupPage() {
     [valid],
   );
 
-  const requiredAppFields = setupConfig.appCredentials.filter((field) =>
-    ['openai_api_key', 'google_api_key'].includes(field.key),
-  );
+  // Apenas credenciais nao-opcionais sao exigidas e exibidas no wizard.
+  // Por padrao isso e so a OpenAI; Google/Apify ficam para a aba Credenciais.
+  const requiredAppFields = setupConfig.appCredentials.filter((field) => !field.optional);
   const allAppValid = requiredAppFields.every((field) => appValid[field.key]);
 
   const updateCore = useCallback((key: keyof CoreValues, value: string) => {
@@ -624,16 +624,21 @@ function ApiStep({
         Estas credenciais ficam criptografadas no Supabase da sua propria instancia.
       </p>
       <div className="space-y-4">
-        {setupConfig.appCredentials.map((field) => (
-          <CredentialField
-            key={field.key}
-            field={field}
-            initialHasValue={false}
-            onChange={onChange}
-            onValidationChange={onValidationChange}
-          />
-        ))}
+        {setupConfig.appCredentials
+          .filter((field) => !field.optional)
+          .map((field) => (
+            <CredentialField
+              key={field.key}
+              field={field}
+              initialHasValue={false}
+              onChange={onChange}
+              onValidationChange={onValidationChange}
+            />
+          ))}
       </div>
+      <p className="mt-4 text-sm text-[#94A3B8]">
+        Chaves opcionais (Google Nano Banana, Apify) podem ser adicionadas depois em Configuracoes &rarr; Credenciais.
+      </p>
       {error && <p className="mt-4 text-sm text-[#EF4444]">{error}</p>}
       <div className="mt-8 flex justify-end">
         <PrimaryButton disabled={!canSubmit || saving || Object.keys(values).length === 0} onClick={onSubmit}>

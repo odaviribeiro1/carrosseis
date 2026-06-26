@@ -35,6 +35,7 @@ import type { SlideContent, VisualSettings, DesignSpec } from '@/types/carousel'
 import { buildSlidePrompt } from '@/lib/ai/buildSlidePrompt';
 import { generateArtDirection } from '@/lib/ai/generateArtDirection';
 import type { ArtDirection } from '@content-hub/shared';
+import { useAuthStore } from '@/stores/auth-store';
 
 type ContentSource = 'text' | 'ig_carousel' | 'ig_post' | 'ig_reel' | 'youtube';
 
@@ -74,9 +75,26 @@ const configSchema = z.object({
   audience: z.string().optional(),
   depth: z.enum(['superficial', 'normal', 'aprofundado']).default('normal'),
   slideCount: z.number().min(3).max(15),
+  imageProvider: z.enum(['gpt_image', 'nano_banana']).default('gpt_image'),
 });
 
 type ConfigFormValues = z.infer<typeof configSchema>;
+
+// O supabase-js empacota erros HTTP da Edge Function como FunctionsHttpError com
+// `.message = "non-2xx status code"` e o corpo real em `.context` (Response).
+// Extrai a mensagem pt-BR do corpo `{ error }` quando disponivel.
+async function extractInvokeError(error: unknown): Promise<string> {
+  const ctx = (error as { context?: Response })?.context;
+  if (ctx && typeof ctx.json === 'function') {
+    try {
+      const parsed = await ctx.json();
+      if (parsed?.error) return String(parsed.error);
+    } catch {
+      /* corpo nao-JSON: usa a mensagem padrao abaixo */
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
+}
 
 const sourceIcons: Record<ContentSource, typeof FileText> = {
   text: FileText,
@@ -217,6 +235,7 @@ export function CreateCarouselPage() {
       audience: '',
       depth: 'normal',
       slideCount: DEPTH_CONFIG.normal.mid,
+      imageProvider: 'gpt_image',
     },
   });
 
@@ -224,6 +243,20 @@ export function CreateCarouselPage() {
   const slideCountValue = watch('slideCount');
 
   const toneMode = watch('toneMode');
+  const imageProvider = (watch('imageProvider') ?? 'gpt_image') as 'gpt_image' | 'nano_banana';
+
+  // Presenca da chave Google (so consultada quando Nano Banana e escolhido).
+  const accessToken = useAuthStore((s) => s.session?.access_token);
+  const [googleKeyPresent, setGoogleKeyPresent] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (imageProvider !== 'nano_banana' || googleKeyPresent !== null) return;
+    fetch('/api/credentials?keys=google_api_key', {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setGoogleKeyPresent(Boolean(data?.google_api_key?.exists)))
+      .catch(() => setGoogleKeyPresent(false));
+  }, [imageProvider, googleKeyPresent, accessToken]);
 
   // Profundidade dirige o default de quantidade de slides (faixa central).
   function handleDepthChange(next: Depth) {
@@ -252,7 +285,7 @@ export function CreateCarouselPage() {
       if (!client) return;
       try {
         const [{ data: carousel }, { data: slidesData }, { data: vs }] = await Promise.all([
-          client.from('carousels').select('ai_input').eq('id', editingId).single(),
+          client.from('carousels').select('ai_input, image_provider').eq('id', editingId).single(),
           client
             .from('carousel_slides')
             .select('position, content, design_spec')
@@ -299,8 +332,11 @@ export function CreateCarouselPage() {
           audience: (ai.audience as string) ?? '',
           depth: (ai.depth as Depth) ?? 'normal',
           slideCount: (ai.slide_count as number) ?? slides.length,
+          imageProvider:
+            (carousel?.image_provider as 'gpt_image' | 'nano_banana') ?? 'gpt_image',
         };
         setConfigValues(cfg);
+        setValue('imageProvider', cfg.imageProvider);
         if (typeof ai.content === 'string') setContent(ai.content);
         setStep(4);
       } catch (err) {
@@ -688,6 +724,7 @@ export function CreateCarouselPage() {
         status: opts.generateImages ? 'ready' : 'draft',
         slide_count: generatedSlides.length,
         ai_input: aiInput,
+        image_provider: cfg?.imageProvider ?? watch('imageProvider') ?? 'gpt_image',
         updated_at: new Date().toISOString(),
       };
 
@@ -778,9 +815,10 @@ export function CreateCarouselPage() {
       }
 
       if (opts.generateImages) {
-        // Gera as imagens em paralelo (limite de 3) via Nano Banana.
+        // Gera as imagens em paralelo (limite de 3) via provider do carrossel.
         let done = 0;
         const total = generatedSlides.length;
+        const failures: string[] = [];
         setAcceptProgress(`Gerando slide 0/${total}`);
         await runPool(generatedSlides, 3, async (slide, i) => {
           const slideId = slideIdByPosition.get(slide.position);
@@ -793,18 +831,27 @@ export function CreateCarouselPage() {
                 reference_images: visualSettings.referenceImages,
               },
             });
-            if (error) throw error;
+            if (error) throw new Error(await extractInvokeError(error));
             const result = data as { error?: string };
             if (result?.error) throw new Error(result.error);
           } catch (err) {
             // Best-effort: uma falha nao aborta o carrossel; o slide pode ser regenerado depois.
-            console.error(`Erro ao gerar imagem do slide ${slide.position}:`, err);
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`Erro ao gerar imagem do slide ${slide.position}:`, msg);
+            failures.push(msg);
           } finally {
             done += 1;
             setAcceptProgress(`Gerando slide ${done}/${total}`);
           }
         });
 
+        if (failures.length > 0) {
+          const unique = Array.from(new Set(failures));
+          toast.error(
+            `${failures.length} de ${total} slides falharam: ${unique[0]}` +
+              (failures.length < total ? ' Use "Regenerar este slide" no editor.' : ''),
+          );
+        }
         navigate(`/editor/${carouselId}`);
       } else {
         toast.success('Rascunho salvo');
@@ -1212,6 +1259,35 @@ export function CreateCarouselPage() {
                   <p className="text-[10px] text-[#94A3B8]">
                     Faixa da profundidade: {DEPTH_CONFIG[depth].min}-{DEPTH_CONFIG[depth].max}
                   </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Modelo de geracao de imagem</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { value: 'gpt_image', label: 'GPT Image', hint: 'Padrao - so precisa da chave OpenAI' },
+                      { value: 'nano_banana', label: 'Google Nano Banana', hint: 'Requer chave do Google' },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setValue('imageProvider', opt.value)}
+                        className={`rounded-md border px-3 py-2 text-left transition-colors ${
+                          imageProvider === opt.value
+                            ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.15)]'
+                            : 'border-[rgba(59,130,246,0.15)] hover:border-[rgba(59,130,246,0.3)]'
+                        }`}
+                      >
+                        <span className="block text-sm font-medium text-[#F8FAFC]">{opt.label}</span>
+                        <span className="block text-[10px] text-[#94A3B8]">{opt.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {imageProvider === 'nano_banana' && googleKeyPresent === false && (
+                    <p className="text-[11px] text-[#F59E0B]">
+                      Configure sua chave do Google na aba Credenciais para usar o Nano Banana.
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex gap-2">
