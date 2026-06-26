@@ -28,12 +28,16 @@ import {
 import { CarouselPreview } from '@/components/preview/CarouselPreview';
 import { VisualSettingsStep } from '@/components/create/VisualSettingsStep';
 import { getSupabaseClient } from '@/lib/supabase';
-import { generatedContentSchema, visualSettingsSchema, defaultDesignSpec } from '@/types/carousel';
-import type { SlideContent, VisualSettings, DesignSpec } from '@/types/carousel';
-import { buildSlidePrompt } from '@/lib/ai/buildSlidePrompt';
+import { generatedContentSchema, visualSettingsSchema } from '@/types/carousel';
+import type { SlideContent, VisualSettings } from '@/types/carousel';
+import { buildSlotPrompt } from '@/lib/ai/buildSlotPrompt';
 import { generateArtDirection } from '@/lib/ai/generateArtDirection';
 import type { ArtDirection } from '@content-hub/shared';
 import { getInstanceImageProvider } from '@/lib/imageProvider';
+import { PRESETS, DEFAULT_PRESET_ID, getPreset } from '@/lib/presets';
+import type { SlideType, SlideText } from '@/lib/presets/types';
+import { PresetThumbnail } from '@/components/render/PresetThumbnail';
+import { loadDefaultBrandKit, type BrandKitData } from '@/lib/brandKit';
 
 type ContentSource = 'text' | 'ig_carousel' | 'ig_post' | 'ig_reel' | 'youtube';
 
@@ -73,6 +77,7 @@ const configSchema = z.object({
   audience: z.string().optional(),
   depth: z.enum(['superficial', 'normal', 'aprofundado']).default('normal'),
   slideCount: z.number().min(3).max(15),
+  presetId: z.string().default(DEFAULT_PRESET_ID),
 });
 
 type ConfigFormValues = z.infer<typeof configSchema>;
@@ -91,6 +96,18 @@ async function extractInvokeError(error: unknown): Promise<string> {
     }
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+// Mapeia o conteudo gerado (headline/body/cta) para o texto do slide (title/body/cta).
+function toSlideText(s: SlideContent): SlideText {
+  return { title: s.headline ?? '', body: s.body ?? '', cta: s.cta ?? '' };
+}
+
+// Tipo de slide do preset (preset so tem capa/conteudo/cta; 'transicao' vira 'conteudo').
+function toSlideType(t: SlideContent['type']): SlideType {
+  if (t === 'capa') return 'capa';
+  if (t === 'cta') return 'cta';
+  return 'conteudo';
 }
 
 const sourceIcons: Record<ContentSource, typeof FileText> = {
@@ -206,8 +223,12 @@ export function CreateCarouselPage() {
   // Quando true, a proxima geracao recomputa a direcao de arte (ignora o cache).
   const [forceArtDirection, setForceArtDirection] = useState(false);
   const [generatedSlides, setGeneratedSlides] = useState<SlideContent[]>([]);
-  const [slideSpecs, setSlideSpecs] = useState<DesignSpec[]>([]);
   const [configValues, setConfigValues] = useState<ConfigFormValues | null>(null);
+  // Brand Kit default (overrides de cor/fonte/logo aplicados ao preset).
+  const [brandKit, setBrandKit] = useState<BrandKitData | null>(null);
+  useEffect(() => {
+    loadDefaultBrandKit().then(setBrandKit).catch(() => setBrandKit(null));
+  }, []);
   const [visualSettings, setVisualSettings] = useState<VisualSettings>(defaultVisualSettings);
   // Conteudo extraido editavel na tela de Configuracao (origens Instagram/YouTube).
   const [extractedDraft, setExtractedDraft] = useState('');
@@ -231,6 +252,7 @@ export function CreateCarouselPage() {
       audience: '',
       depth: 'normal',
       slideCount: DEPTH_CONFIG.normal.mid,
+      presetId: DEFAULT_PRESET_ID,
     },
   });
 
@@ -238,6 +260,7 @@ export function CreateCarouselPage() {
   const slideCountValue = watch('slideCount');
 
   const toneMode = watch('toneMode');
+  const presetId = (watch('presetId') ?? DEFAULT_PRESET_ID) as string;
 
   // Profundidade dirige o default de quantidade de slides (faixa central).
   function handleDepthChange(next: Depth) {
@@ -266,10 +289,10 @@ export function CreateCarouselPage() {
       if (!client) return;
       try {
         const [{ data: carousel }, { data: slidesData }, { data: vs }] = await Promise.all([
-          client.from('carousels').select('ai_input').eq('id', editingId).single(),
+          client.from('carousels').select('ai_input, preset_id').eq('id', editingId).single(),
           client
             .from('carousel_slides')
-            .select('position, content, design_spec')
+            .select('position, content')
             .eq('carousel_id', editingId)
             .order('position', { ascending: true }),
           client.from('carousel_visual_settings').select('*').eq('carousel_id', editingId).maybeSingle(),
@@ -284,11 +307,8 @@ export function CreateCarouselPage() {
         }
 
         const slides = rows.map((r) => r.content as SlideContent);
-        const specs = rows.map(
-          (r, i) => (r.design_spec as DesignSpec | null) ?? defaultDesignSpec(slides[i]!.type),
-        );
         setGeneratedSlides(slides);
-        setSlideSpecs(specs);
+        if (carousel?.preset_id) setValue('presetId', carousel.preset_id as string);
 
         if (vs) {
           setVisualSettings({
@@ -313,6 +333,7 @@ export function CreateCarouselPage() {
           audience: (ai.audience as string) ?? '',
           depth: (ai.depth as Depth) ?? 'normal',
           slideCount: (ai.slide_count as number) ?? slides.length,
+          presetId: (carousel?.preset_id as string) ?? DEFAULT_PRESET_ID,
         };
         setConfigValues(cfg);
         if (typeof ai.content === 'string') setContent(ai.content);
@@ -565,8 +586,6 @@ export function CreateCarouselPage() {
       const cappedSlides = await enforceWordCap(client, parsed.data.slides, cap);
 
       setGeneratedSlides(cappedSlides);
-      // Defaults de design por slide (editaveis na Preview).
-      setSlideSpecs(cappedSlides.map((s) => defaultDesignSpec(s.type)));
       setVisualSettings(visual);
       setStep(4);
       toast.success('Carrossel gerado com sucesso');
@@ -577,23 +596,11 @@ export function CreateCarouselPage() {
     }
   }
 
-  // Compila o prompt do Nano Banana para cada slide (conteudo + design spec +
-  // visual + direcao de arte global, que e a ancora de consistencia entre slides).
-  function buildSlidePrompts(artDirection?: ArtDirection): string[] {
-    const refNote =
-      visualSettings.referenceImages.length > 0
-        ? '\nUse as imagens de referencia fornecidas como inspiracao visual (estilo, paleta, composicao), sem copiar textos delas.'
-        : '';
-    return generatedSlides.map(
-      (slide, i) =>
-        buildSlidePrompt({
-          content: slide,
-          designSpec: slideSpecs[i] ?? defaultDesignSpec(slide.type),
-          visual: visualSettings,
-          slideIndex: i,
-          slideTotal: generatedSlides.length,
-          artDirection,
-        }) + refNote,
+  // Compila o prompt do SLOT de imagem (so foto, sem texto) para cada slide.
+  // O texto e renderizado por codigo (SlideRenderer); a IA so preenche o slot.
+  function buildSlotPrompts(artDirection?: ArtDirection): string[] {
+    return generatedSlides.map((slide) =>
+      buildSlotPrompt({ content: toSlideText(slide), artDirection }),
     );
   }
 
@@ -670,6 +677,7 @@ export function CreateCarouselPage() {
         slide_count: generatedSlides.length,
         ai_input: aiInput,
         image_provider: imageProvider,
+        preset_id: cfg?.presetId ?? watch('presetId') ?? DEFAULT_PRESET_ID,
         updated_at: new Date().toISOString(),
       };
 
@@ -711,9 +719,9 @@ export function CreateCarouselPage() {
       // 2.5) Direcao de arte global (cacheada por hash) + prompts dos slides ja
       // ancorados nela. Precisa do carouselId, por isso vem depois do passo 1.
       const artDirection = await resolveArtDirection(carouselId);
-      const prompts = buildSlidePrompts(artDirection);
+      const prompts = buildSlotPrompts(artDirection);
 
-      // 3) Slides (com content estruturado + design spec + prompt compilado).
+      // 3) Slides (texto estruturado + tipo + prompt do slot). content mantido p/ retrocompat.
       const slideIdByPosition = new Map<number, string>();
       if (editingId) {
         const { data: existing } = await client
@@ -725,7 +733,8 @@ export function CreateCarouselPage() {
           const slide = generatedSlides[i]!;
           const row = {
             content: slide,
-            design_spec: slideSpecs[i] ?? defaultDesignSpec(slide.type),
+            slide_type: toSlideType(slide.type),
+            text_content: toSlideText(slide),
             image_prompt: prompts[i],
           };
           const sid = existingByPos.get(slide.position);
@@ -746,7 +755,8 @@ export function CreateCarouselPage() {
           carousel_id: carouselId,
           position: slide.position,
           content: slide,
-          design_spec: slideSpecs[i] ?? defaultDesignSpec(slide.type),
+          slide_type: toSlideType(slide.type),
+          text_content: toSlideText(slide),
           image_prompt: prompts[i],
         }));
         const { data: insertedSlides, error: slidesError } = await client
@@ -825,17 +835,6 @@ export function CreateCarouselPage() {
     toast.message('Nova direcao de arte sera gerada ao gerar o carrossel.');
   }
 
-  function updateSpec(index: number, spec: DesignSpec) {
-    setSlideSpecs((prev) => prev.map((s, i) => (i === index ? spec : s)));
-  }
-
-  // Padroniza a tipografia: replica a do slide `sourceIndex` para todos.
-  function standardizeTypography(sourceIndex: number) {
-    const sourceSpec = slideSpecs[sourceIndex];
-    if (!sourceSpec) return;
-    setSlideSpecs((prev) => prev.map((s) => ({ ...s, typography: sourceSpec.typography })));
-    toast.success('Tipografia padronizada em todos os slides');
-  }
 
   const extractingLabel: Record<ContentSource, string> = {
     text: '',
@@ -1176,6 +1175,33 @@ export function CreateCarouselPage() {
                   </p>
                 </div>
 
+                {/* Seletor de preset (template do slide) */}
+                <div className="space-y-2">
+                  <Label>Modelo de slide (preset)</Label>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {PRESETS.map((p) => {
+                      const sel = presetId === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setValue('presetId', p.id)}
+                          className={`flex flex-col items-center gap-2 rounded-xl border p-2 transition-all ${
+                            sel
+                              ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.1)]'
+                              : 'border-[rgba(59,130,246,0.15)] hover:border-[rgba(59,130,246,0.35)]'
+                          }`}
+                        >
+                          <PresetThumbnail preset={p} width={120} />
+                          <span className={`text-xs font-medium ${sel ? 'text-[#60A5FA]' : 'text-[#94A3B8]'}`}>
+                            {p.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">
                     <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
@@ -1201,8 +1227,8 @@ export function CreateCarouselPage() {
         {step === 4 && (
           <CarouselPreview
             slides={generatedSlides}
-            specs={slideSpecs}
-            visual={visualSettings}
+            preset={getPreset(presetId)}
+            brandKit={brandKit}
             onAccept={acceptCarousel}
             onSaveDraft={saveDraft}
             isAccepting={isAccepting}
@@ -1213,11 +1239,8 @@ export function CreateCarouselPage() {
             onReject={() => setStep(3)}
             onRegenerate={() => {
               setGeneratedSlides([]);
-              setSlideSpecs([]);
               setStep(3);
             }}
-            onUpdateSpec={updateSpec}
-            onStandardizeTypography={standardizeTypography}
             onUpdateSlide={(position, field, value) => {
               setGeneratedSlides((prev) =>
                 prev.map((s) =>

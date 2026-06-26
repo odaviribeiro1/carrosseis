@@ -10,7 +10,6 @@ import {
   Undo2,
   ChevronUp,
   ChevronDown,
-  ImageOff,
   ImagePlus,
   Pencil,
   X,
@@ -19,16 +18,26 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { getSupabaseClient } from '@/lib/supabase';
-import { downloadImagesAsZip } from '@/lib/export/download-zip';
-import type { DesignSpec } from '@/types/carousel';
+import { downloadComposedZip } from '@/lib/export/compose';
+import { getPreset, type Preset, type SlideType, type SlideText, type StyleTokens } from '@/lib/presets';
+import { mergeTokens, brandFontFaces } from '@/lib/presets/mergeTokens';
+import { loadDefaultBrandKit, type BrandKitData } from '@/lib/brandKit';
+import { SlideRenderer, FRAME_W, FRAME_H } from '@/components/render/SlideRenderer';
 
 interface RefineSlide {
   id: string;
   position: number;
-  imageUrl: string | null;
+  slideType: SlideType;
+  text: SlideText;
+  slotImageUrl: string | null;
   imagePrompt: string | null;
-  designSpec: DesignSpec | null;
   currentVersion: number;
+}
+
+function toSlideType(t: string | null): SlideType {
+  if (t === 'capa') return 'capa';
+  if (t === 'cta') return 'cta';
+  return 'conteudo';
 }
 
 export function EditorPage() {
@@ -38,6 +47,8 @@ export function EditorPage() {
   const [isMobile, setIsMobile] = useState(false);
 
   const [slides, setSlides] = useState<RefineSlide[]>([]);
+  const [preset, setPreset] = useState<Preset>(getPreset(null));
+  const [brandKit, setBrandKit] = useState<BrandKitData | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [refinePrompt, setRefinePrompt] = useState('');
   const [refineImage, setRefineImage] = useState<string | null>(null);
@@ -47,13 +58,18 @@ export function EditorPage() {
   const [reverting, setReverting] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Nós 1:1 (offscreen) para captura no export.
+  const exportRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
   const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
+  const tokens: StyleTokens = mergeTokens(preset, brandKit);
+  const fonts = brandFontFaces(brandKit);
+
   function handleAttachImage(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    e.target.value = ''; // permite reanexar o mesmo arquivo
+    e.target.value = '';
     if (!file) return;
     if (!ALLOWED_TYPES.includes(file.type)) {
       toast.error('Formato nao suportado. Use PNG, JPG ou WEBP.');
@@ -87,6 +103,10 @@ export function EditorPage() {
   }, []);
 
   useEffect(() => {
+    loadDefaultBrandKit().then(setBrandKit).catch(() => setBrandKit(null));
+  }, []);
+
+  useEffect(() => {
     if (!id) return;
     let ignore = false;
 
@@ -94,22 +114,35 @@ export function EditorPage() {
       const client = getSupabaseClient();
       if (!client) return;
       try {
-        const { data, error } = await client
-          .from('carousel_slides')
-          .select('id, position, image_url, image_prompt, design_spec, current_version')
-          .eq('carousel_id', id)
-          .order('position', { ascending: true });
+        const [{ data: carousel }, { data, error }] = await Promise.all([
+          client.from('carousels').select('preset_id').eq('id', id).maybeSingle(),
+          client
+            .from('carousel_slides')
+            .select('id, position, slide_type, text_content, slot_image_url, image_url, content, image_prompt, current_version')
+            .eq('carousel_id', id)
+            .order('position', { ascending: true }),
+        ]);
         if (error) throw error;
         if (ignore) return;
+        if (carousel?.preset_id) setPreset(getPreset(carousel.preset_id as string));
         setSlides(
-          (data ?? []).map((s) => ({
-            id: s.id as string,
-            position: s.position as number,
-            imageUrl: (s.image_url as string | null) ?? null,
-            imagePrompt: (s.image_prompt as string | null) ?? null,
-            designSpec: (s.design_spec as DesignSpec | null) ?? null,
-            currentVersion: (s.current_version as number | null) ?? 1,
-          })),
+          (data ?? []).map((s) => {
+            const tc = (s.text_content as SlideText | null) ?? null;
+            const legacy = (s.content as { headline?: string; body?: string; cta?: string } | null) ?? null;
+            return {
+              id: s.id as string,
+              position: s.position as number,
+              slideType: toSlideType(s.slide_type as string | null),
+              text: tc ?? {
+                title: legacy?.headline ?? '',
+                body: legacy?.body ?? '',
+                cta: legacy?.cta ?? '',
+              },
+              slotImageUrl: (s.slot_image_url as string | null) ?? (s.image_url as string | null) ?? null,
+              imagePrompt: (s.image_prompt as string | null) ?? null,
+              currentVersion: (s.current_version as number | null) ?? 1,
+            };
+          }),
         );
       } catch (err) {
         if (ignore) return;
@@ -136,9 +169,9 @@ export function EditorPage() {
     const adj = instruction.trim();
     let prompt = basePrompt;
     if (adj) {
-      prompt += `\n\nAJUSTE SOLICITADO (mantenha o texto literal e a identidade): ${adj}.`;
+      prompt += `\n\nAJUSTE SOLICITADO (mantendo a regra de NAO incluir texto): ${adj}.`;
     } else if (refineImage) {
-      prompt += '\n\nAJUSTE SOLICITADO: incorpore a imagem de referencia fornecida ao slide, mantendo o texto literal, o estilo e a identidade.';
+      prompt += '\n\nAJUSTE SOLICITADO: use a imagem de referencia fornecida como inspiracao visual, mantendo a regra de NAO incluir texto.';
     }
     if (!prompt.trim()) throw new Error('Este slide nao tem prompt base. Gere o carrossel novamente.');
 
@@ -146,17 +179,18 @@ export function EditorPage() {
       body: { slide_id: slide.id, prompt, reference_image: refineImage ?? undefined },
     });
     if (error) throw error;
-    const result = data as { image_url?: string; version?: number; error?: string };
+    const result = data as { slot_image_url?: string; image_url?: string; version?: number; error?: string };
     if (result?.error) throw new Error(result.error);
-    if (!result?.image_url) throw new Error('Nenhuma imagem retornada');
-    return { imageUrl: result.image_url, version: result.version ?? slide.currentVersion + 1, prompt };
+    const url = result?.slot_image_url ?? result?.image_url;
+    if (!url) throw new Error('Nenhuma imagem retornada');
+    return { imageUrl: url, version: result.version ?? slide.currentVersion + 1, prompt };
   }
 
   function applyResult(slideId: string, imageUrl: string, version: number, prompt: string) {
     setSlides((prev) =>
       prev.map((s) =>
         s.id === slideId
-          ? { ...s, imageUrl: `${imageUrl}?v=${version}`, currentVersion: version, imagePrompt: prompt }
+          ? { ...s, slotImageUrl: `${imageUrl}?v=${version}`, currentVersion: version, imagePrompt: prompt }
           : s,
       ),
     );
@@ -187,7 +221,6 @@ export function EditorPage() {
     let done = 0;
     const total = slides.length;
     setApplyAllProgress(`Aplicando 0/${total}`);
-    // Concorrencia 3 (last-write-wins por slide; cada slide e independente).
     let cursor = 0;
     const list = [...slides];
     const runners = Array.from({ length: Math.min(3, list.length) }, async () => {
@@ -217,10 +250,9 @@ export function EditorPage() {
     if (!client) return;
     setReverting(true);
     try {
-      // Busca a versao imediatamente anterior arquivada.
       const { data: versions, error } = await client
         .from('carousel_slide_versions')
-        .select('id, version, image_url, image_prompt, design_spec')
+        .select('id, version, image_url, image_prompt')
         .eq('slide_id', active.id)
         .order('version', { ascending: false })
         .limit(1);
@@ -234,15 +266,13 @@ export function EditorPage() {
       const { error: updErr } = await client
         .from('carousel_slides')
         .update({
-          image_url: prev.image_url,
+          slot_image_url: prev.image_url,
           image_prompt: prev.image_prompt,
-          design_spec: prev.design_spec,
           current_version: prev.version,
         })
         .eq('id', active.id);
       if (updErr) throw updErr;
 
-      // Remove a versao restaurada para que reverter de novo volte mais um passo.
       await client.from('carousel_slide_versions').delete().eq('id', prev.id);
 
       applyResult(active.id, prev.image_url as string, prev.version as number, (prev.image_prompt as string) ?? '');
@@ -264,7 +294,6 @@ export function EditorPage() {
     const client = getSupabaseClient();
     if (!client) return;
 
-    // Troca as posicoes localmente e persiste.
     const next = [...slides];
     const aPos = a.position;
     const bPos = b.position;
@@ -282,23 +311,17 @@ export function EditorPage() {
 
   async function handleDownload() {
     if (slides.length === 0) return;
-    const images = slides
-      .filter((s) => s.imageUrl)
-      .map((s) => ({ position: s.position, url: s.imageUrl as string }));
-    if (images.length === 0) {
-      toast.error('Nenhum slide tem imagem gerada ainda.');
-      return;
-    }
     setDownloading(true);
     try {
-      await downloadImagesAsZip(images, 'carrossel');
-      // Marca o carrossel como baixado (aba/badge "Baixado" no Dashboard).
+      // Composição client-side: o MESMO SlideRenderer (offscreen, 1:1) é capturado.
+      const nodes = slides
+        .map((s) => exportRefs.current.get(s.id))
+        .filter((n): n is HTMLDivElement => Boolean(n));
+      if (nodes.length === 0) throw new Error('Nada para exportar.');
+      await downloadComposedZip(nodes, 'carrossel');
       const client = getSupabaseClient();
       if (client && id) {
-        await client
-          .from('carousels')
-          .update({ downloaded_at: new Date().toISOString() })
-          .eq('id', id);
+        await client.from('carousels').update({ downloaded_at: new Date().toISOString() }).eq('id', id);
       }
       toast.success('Download iniciado');
     } catch (err) {
@@ -330,6 +353,11 @@ export function EditorPage() {
     );
   }
 
+  const THUMB_W = 160;
+  const thumbScale = THUMB_W / FRAME_W;
+  const CENTER_W = 480;
+  const centerScale = CENTER_W / FRAME_W;
+
   return (
     <div className="flex h-screen flex-col bg-[#0A0A0F]">
       {/* Top bar */}
@@ -346,35 +374,31 @@ export function EditorPage() {
           <Layers className="h-4 w-4" /> {slides.length} slides
         </div>
         <Button variant="outline" size="sm" onClick={() => void handleDownload()} disabled={downloading}>
-          {downloading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="mr-2 h-4 w-4" />
-          )}
+          {downloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
           Baixar ZIP
         </Button>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
         {/* Painel de slides (esquerda) */}
-        <div className="w-44 shrink-0 space-y-2 overflow-y-auto border-r border-[rgba(59,130,246,0.15)] p-3">
+        <div className="w-48 shrink-0 space-y-2 overflow-y-auto border-r border-[rgba(59,130,246,0.15)] p-3">
           {slides.map((slide, i) => (
             <div
               key={slide.id}
               className={`group relative cursor-pointer overflow-hidden rounded-lg border-2 transition-all ${
-                i === activeIndex
-                  ? 'border-[#3B82F6]'
-                  : 'border-transparent opacity-70 hover:opacity-100'
+                i === activeIndex ? 'border-[#3B82F6]' : 'border-transparent opacity-70 hover:opacity-100'
               }`}
               onClick={() => setActiveIndex(i)}
             >
-              <div className="flex aspect-[4/5] items-center justify-center bg-[rgba(59,130,246,0.06)]">
-                {slide.imageUrl ? (
-                  <img src={slide.imageUrl} alt={`Slide ${slide.position}`} className="h-full w-full object-cover" />
-                ) : (
-                  <ImageOff className="h-6 w-6 text-[#94A3B8]" />
-                )}
-              </div>
+              <SlideRenderer
+                preset={preset}
+                slideType={slide.slideType}
+                tokens={tokens}
+                content={slide.text}
+                slotImageUrl={slide.slotImageUrl}
+                scale={thumbScale}
+                fontFaces={fonts}
+              />
               <div className="absolute left-1 top-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
                 {slide.position}
               </div>
@@ -410,17 +434,18 @@ export function EditorPage() {
         </div>
 
         {/* Slide ativo (centro) */}
-        <div className="flex flex-1 items-center justify-center overflow-hidden p-6">
+        <div className="flex flex-1 items-center justify-center overflow-auto p-6">
           {active ? (
-            <div className="relative aspect-[4/5] h-full max-h-[80vh] overflow-hidden rounded-2xl border border-[rgba(59,130,246,0.2)] bg-[rgba(59,130,246,0.04)] shadow-[0_0_60px_rgba(59,130,246,0.08)]">
-              {active.imageUrl ? (
-                <img src={active.imageUrl} alt={`Slide ${active.position}`} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-[#94A3B8]">
-                  <ImageOff className="h-10 w-10" />
-                  <p className="text-sm">Imagem ainda nao gerada</p>
-                </div>
-              )}
+            <div className="relative overflow-hidden rounded-2xl border border-[rgba(59,130,246,0.2)] shadow-[0_0_60px_rgba(59,130,246,0.08)]">
+              <SlideRenderer
+                preset={preset}
+                slideType={active.slideType}
+                tokens={tokens}
+                content={active.text}
+                slotImageUrl={active.slotImageUrl}
+                scale={centerScale}
+                fontFaces={fonts}
+              />
               {regeneratingId === active.id && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50">
                   <div className="flex items-center gap-2 text-white">
@@ -439,7 +464,7 @@ export function EditorPage() {
           <div>
             <h2 className="text-sm font-semibold text-[#F8FAFC]">Refinar slide {active?.position ?? ''}</h2>
             <p className="mt-1 text-xs text-[#94A3B8]">
-              Descreva o ajuste em linguagem natural. A IA regenera a imagem mantendo o texto.
+              Descreva o ajuste da imagem (foto do slot). O texto e do template e nao muda aqui.
             </p>
           </div>
 
@@ -447,12 +472,11 @@ export function EditorPage() {
             value={refinePrompt}
             onChange={(e) => setRefinePrompt(e.target.value)}
             rows={4}
-            placeholder='Ex: "deixe o fundo mais escuro e o titulo maior"'
+            placeholder='Ex: "fundo mais escuro, foco no objeto"'
             disabled={busy}
             className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-3 py-2 text-xs text-[#CBD5E1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] disabled:opacity-50"
           />
 
-          {/* Anexar imagem de referencia (multimodal) */}
           <input
             ref={fileInputRef}
             type="file"
@@ -475,61 +499,61 @@ export function EditorPage() {
               </button>
             </div>
           ) : (
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={busy}
-            >
+            <Button variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()} disabled={busy}>
               <ImagePlus className="mr-2 h-4 w-4" /> Anexar imagem
             </Button>
           )}
 
           <Button className="w-full" onClick={() => void regenerateSlide()} disabled={busy}>
             {regeneratingId === active?.id ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando...
-              </>
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando...</>
             ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" /> Regenerar este slide
-              </>
+              <><RefreshCw className="mr-2 h-4 w-4" /> Regenerar imagem deste slide</>
             )}
           </Button>
 
           <Button variant="outline" className="w-full" onClick={() => void applyToAll()} disabled={busy}>
             {applyAllProgress ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {applyAllProgress}
-              </>
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {applyAllProgress}</>
             ) : (
-              <>
-                <Layers className="mr-2 h-4 w-4" /> Aplicar em todos os slides
-              </>
+              <><Layers className="mr-2 h-4 w-4" /> Aplicar imagem em todos</>
             )}
           </Button>
 
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => void revertSlide()}
-            disabled={busy}
-          >
+          <Button variant="outline" className="w-full" onClick={() => void revertSlide()} disabled={busy}>
             {reverting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Revertendo...
-              </>
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Revertendo...</>
             ) : (
-              <>
-                <Undo2 className="mr-2 h-4 w-4" /> Reverter para versao anterior
-              </>
+              <><Undo2 className="mr-2 h-4 w-4" /> Reverter para versao anterior</>
             )}
           </Button>
 
-          {active && (
-            <p className="text-[10px] text-[#94A3B8]/70">Versao atual: v{active.currentVersion}</p>
-          )}
+          {active && <p className="text-[10px] text-[#94A3B8]/70">Versao atual: v{active.currentVersion}</p>}
         </div>
+      </div>
+
+      {/* Render offscreen 1:1 para o export (mesmo componente do preview). */}
+      <div style={{ position: 'fixed', left: -99999, top: 0, pointerEvents: 'none', opacity: 0 }} aria-hidden>
+        {slides.map((slide) => (
+          <div
+            key={slide.id}
+            ref={(el) => {
+              if (el) exportRefs.current.set(slide.id, el);
+              else exportRefs.current.delete(slide.id);
+            }}
+            style={{ width: FRAME_W, height: FRAME_H }}
+          >
+            <SlideRenderer
+              preset={preset}
+              slideType={slide.slideType}
+              tokens={tokens}
+              content={slide.text}
+              slotImageUrl={slide.slotImageUrl}
+              scale={1}
+              fontFaces={fonts}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
