@@ -5,6 +5,11 @@ import { setupConfig } from '../../../../../setup.config';
 import { CredentialField } from '@/components/credentials/CredentialField';
 import { RoleGuard } from '@/components/layout/RoleGuard';
 import { useAuthStore } from '@/stores/auth-store';
+import {
+  getInstanceImageProvider,
+  setInstanceImageProvider,
+  type ImageProviderId,
+} from '@/lib/imageProvider';
 
 export function CredentialsPanel() {
   const [presence, setPresence] = useState<Record<string, { exists: boolean }>>({});
@@ -12,6 +17,30 @@ export function CredentialsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { session } = useAuthStore();
+
+  // Modelo de geracao de imagem padrao da instancia (global).
+  const [imageProvider, setImageProvider] = useState<ImageProviderId>('gpt_image');
+  const [savingProvider, setSavingProvider] = useState(false);
+  useEffect(() => {
+    getInstanceImageProvider()
+      .then(setImageProvider)
+      .catch(() => {/* mantem default gpt_image */});
+  }, []);
+
+  async function changeImageProvider(next: ImageProviderId) {
+    const prev = imageProvider;
+    setImageProvider(next);
+    setSavingProvider(true);
+    try {
+      await setInstanceImageProvider(next);
+      toast.success('Modelo de imagem atualizado');
+    } catch (err) {
+      setImageProvider(prev);
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar modelo');
+    } finally {
+      setSavingProvider(false);
+    }
+  }
 
   useEffect(() => {
     const keys = setupConfig.appCredentials.map((field) => field.key).join(',');
@@ -88,6 +117,43 @@ export function CredentialsPanel() {
           </div>
         ) : (
           <>
+            {/* Modelo de geracao de imagem (global da instancia) */}
+            <div className="mb-6 rounded-2xl border border-[rgba(59,130,246,0.12)] bg-[rgba(255,255,255,0.02)] p-5">
+              <div className="mb-3 flex items-center gap-2">
+                <h3 className="text-[13px] font-medium text-[#CBD5E1]">Modelo de geracao de imagem</h3>
+                {savingProvider && <Loader2 className="h-3.5 w-3.5 animate-spin text-[#60A5FA]" />}
+              </div>
+              <p className="mb-3 text-[13px] leading-5 text-[#94A3B8]">
+                Modelo usado para gerar as imagens dos slides. Vale para todos os carrosseis novos.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { value: 'gpt_image', label: 'GPT Image', hint: 'OpenAI - so precisa da chave OpenAI' },
+                  { value: 'nano_banana', label: 'Google Nano Banana', hint: 'Requer chave do Google' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={savingProvider}
+                    onClick={() => void changeImageProvider(opt.value)}
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-60 ${
+                      imageProvider === opt.value
+                        ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.15)]'
+                        : 'border-[rgba(59,130,246,0.15)] hover:border-[rgba(59,130,246,0.3)]'
+                    }`}
+                  >
+                    <span className="block text-sm font-medium text-[#F8FAFC]">{opt.label}</span>
+                    <span className="block text-[10px] text-[#94A3B8]">{opt.hint}</span>
+                  </button>
+                ))}
+              </div>
+              {imageProvider === 'nano_banana' && presence.google_api_key?.exists === false && (
+                <p className="mt-3 text-[11px] text-[#F59E0B]">
+                  Configure a chave do Google abaixo para o Nano Banana funcionar.
+                </p>
+              )}
+            </div>
+
             <div className={setupConfig.appCredentials.length > 6 ? 'grid gap-4 lg:grid-cols-2' : 'space-y-4'}>
               {setupConfig.appCredentials.map((field) => (
                 <CredentialField
