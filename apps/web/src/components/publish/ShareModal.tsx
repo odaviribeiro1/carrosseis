@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, X, Smartphone, Copy, Check, Wand2, Music } from 'lucide-react';
+import { Loader2, X, Smartphone, Copy, Check, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getSupabaseClient } from '@/lib/supabase';
 import { generateQRCodeDataUrl } from '@/lib/qrcode';
@@ -205,16 +205,6 @@ export function ShareModal({ carouselId, captionSlides, composeAndUpload, onClos
                 placeholder="Legenda..."
                 className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.15)] bg-[rgba(15,18,35,0.5)] px-3 py-2 text-xs text-[#CBD5E1]"
               />
-            </div>
-
-            {/* Aviso música */}
-            <div className="flex gap-2 rounded-xl border border-[rgba(245,158,11,0.2)] bg-[rgba(245,158,11,0.05)] p-3 text-[11px] text-[#FCD34D]">
-              <Music className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>
-                A publicação com música é manual: a biblioteca de música do Instagram só existe dentro do app
-                e não é liberada para publicação automática por nenhuma ferramenta. A ferramenta entrega tudo
-                pronto; só o passo final é no celular.
-              </span>
             </div>
 
             {shareUrl && (

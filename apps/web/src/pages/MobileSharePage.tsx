@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Loader2, Download, Copy, Check, Music } from 'lucide-react';
+import { Loader2, Download, Copy, Check } from 'lucide-react';
 import { getShare, type ShareData } from '@/lib/share';
 
 type Status = 'loading' | 'ok' | 'notfound' | 'expired' | 'error';
@@ -57,22 +57,6 @@ export function MobileSharePage() {
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
-  }
-
-  function downloadAll() {
-    if (!data) return;
-    data.imageUrls.forEach((img, i) => {
-      setTimeout(() => {
-        const a = document.createElement('a');
-        a.href = img.url;
-        a.download = `slide-${String(i + 1).padStart(2, '0')}.png`;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }, i * 600);
-    });
   }
 
   if (status === 'loading') {
@@ -137,16 +121,9 @@ export function MobileSharePage() {
           </div>
         )}
 
-        {/* Baixar todas */}
-        <button
-          type="button"
-          onClick={downloadAll}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#3B82F6] py-2.5 text-sm font-medium text-white"
-        >
-          <Download className="h-4 w-4" /> Baixar todas
-        </button>
         <p className="text-center text-[10px] text-[#94A3B8]">
-          Se a imagem abrir em vez de baixar, segure nela e toque em "Salvar na galeria".
+          Toque em "Salvar slide" abaixo. Se a imagem abrir em vez de baixar, segure nela e toque em
+          "Salvar na galeria".
         </p>
 
         {/* Imagens na ordem */}
@@ -165,15 +142,6 @@ export function MobileSharePage() {
               </a>
             </div>
           ))}
-        </div>
-
-        {/* Aviso música */}
-        <div className="flex gap-2 rounded-xl border border-[rgba(245,158,11,0.2)] bg-[rgba(245,158,11,0.05)] p-3 text-[11px] text-[#FCD34D]">
-          <Music className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
-            A publicação final com música é manual: a biblioteca de música do Instagram só existe dentro
-            do app e não é liberada para publicação automática por nenhuma ferramenta.
-          </span>
         </div>
       </div>
     </div>
