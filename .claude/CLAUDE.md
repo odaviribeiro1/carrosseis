@@ -4,7 +4,7 @@
 
 **Content Hub** é um boilerplate **open source self-hosted** de criação de carrosséis visuais (formato 4:5), alimentado por IA. Distribuído via fork: o operador clona o repositório, configura suas envs, sobe seu Supabase e faz deploy.
 
-- **Escopo**: gerar carrosséis com IA, editar no Konva e baixar (PNG individual ou ZIP). **Sem publicação direta em redes sociais.**
+- **Escopo**: gerar carrosséis com IA, editar no Konva, baixar (PNG individual ou ZIP) e **publicar/agendar no Instagram via Zernio**.
 - **Modelo**: instância única (singleton) — uma instância atende uma organização, com múltiplos usuários internos.
 - **Sem billing interno** — controle comercial e de assinaturas, se houver, vive fora do produto.
 - **Tema visual fixo no código** (`apps/web/src/index.css`). Personalização é por edição direta + rebuild.
@@ -399,7 +399,7 @@ Todas devem:
 20. **Rate limiting nas Edge Functions** (pendente, mas exigível para qualquer função pública).
 21. **Concorrência no editor** — implementar lock simples (`editing_by` + timestamp) quando houver demanda de colaboração.
 22. **Primeiro usuário vira admin** via trigger SQL — não duplicar essa lógica no frontend.
-23. **Sem publicação direta em redes sociais** — o produto entrega o ZIP/PNG. Integrações com Instagram/Meta foram removidas e não devem ser reintroduzidas neste boilerplate.
+23. **Publicação no Instagram via Zernio** — além do ZIP/PNG, o produto publica/agenda carrosséis no Instagram pela **API do Zernio** (`https://zernio.com/api/v1`). A API key do Zernio é credencial da instância (`app_settings.zernio_api_key`, lida via `getCredential`); a conexão da conta IG (profile_id/account_id/username) vive em `instance_settings.zernio_connection`; posts publicados/agendados ficam em `scheduled_posts`. Toda chamada ao Zernio é server-side (Edge Functions `zernio-connect`/`zernio-sync-account`/`zernio-publish`) — a key nunca toca o browser. **A integração antiga via Meta/Facebook Login continua removida e não deve voltar** — a publicação é exclusivamente via Zernio. Campo de mídia confirmado: `mediaItems:[{type,url}]` (não `media`).
 
 ---
 

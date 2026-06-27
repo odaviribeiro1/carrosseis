@@ -249,6 +249,37 @@ ${JSON.stringify(slides)}
 Retorne APENAS um JSON valido: { "slides": [ { "position": <num>, "body": "<texto curto>" } ] }`;
 }
 
+// Prompt para a legenda (caption) do post no Instagram a partir dos slides.
+// Reusa o baseline anti-IA + o tom do carrossel.
+function buildCaptionPrompt(params: {
+  slides: Array<{ headline?: string; body?: string }>;
+  tone: string;
+  audience: string;
+}): string {
+  const slidesText = params.slides
+    .map((s, i) => `Slide ${i + 1}: ${[s.headline, s.body].filter(Boolean).join(' — ')}`)
+    .join('\n');
+  return `${buildVoiceBlock(params.tone)}
+
+---
+
+Escreva a LEGENDA de um post de carrossel no Instagram a partir do conteudo dos slides abaixo.
+Publico-alvo: ${params.audience || 'geral'}.
+
+<slides>
+${slidesText}
+</slides>
+
+Regras da legenda:
+- Primeira linha: um GANCHO curto e forte (para o scroll).
+- Corpo conciso (2 a 5 frases) que dao vontade de abrir o carrossel — sem repetir literalmente os slides.
+- Uma CTA leve no final (ex.: salve, comente, compartilhe) — natural, sem hype.
+- Termine com 5 a 12 HASHTAGS relevantes ao tema, em uma linha.
+- Portugues do Brasil, no tom definido acima. Maximo ~2000 caracteres.
+
+Retorne APENAS um JSON valido: { "caption": "<legenda completa com hashtags ao final>" }`;
+}
+
 Deno.serve(async (req: Request) => {
   const corsHeaders = await getCorsHeaders(req);
 
@@ -294,6 +325,7 @@ Deno.serve(async (req: Request) => {
       category = 'educacional',
       social_format = false,
       slides: slidesToShorten = [],
+      caption_slides = [],
       provider: providerOverride,
       model: modelOverride,
     } = body;
@@ -368,6 +400,28 @@ Deno.serve(async (req: Request) => {
         parsed = m?.[1] ? JSON.parse(m[1]) : { slides: [] };
       }
       return new Response(JSON.stringify(parsed), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Modo 'caption': sugere a legenda do post no Instagram a partir dos slides.
+    if (mode === 'caption') {
+      const captionResult = await adapter.generateContent(
+        buildCaptionPrompt({
+          slides: Array.isArray(caption_slides) ? caption_slides : [],
+          tone: String(tone || 'informativo'),
+          audience,
+        }),
+        { apiKey, model, maxTokens: 700 },
+      );
+      let caption = '';
+      try {
+        caption = String(JSON.parse(captionResult.content)?.caption ?? '');
+      } catch {
+        const m = captionResult.content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        caption = m?.[1] ? String(JSON.parse(m[1])?.caption ?? '') : captionResult.content.trim();
+      }
+      return new Response(JSON.stringify({ caption }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

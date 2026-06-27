@@ -78,3 +78,31 @@ export async function setDefaultSocialProfile(profile: DefaultSocialProfile): Pr
     .eq('id', true);
   if (error) throw error;
 }
+
+// Conexão Zernio da instância (publicação no Instagram). profile_id é o profile
+// no Zernio; account_id é a conta IG resolvida; username/connected_at p/ exibição.
+export interface ZernioConnection {
+  profile_id: string;
+  account_id: string;
+  username: string;
+  connected_at: string;
+}
+
+/** Lê a conexão Zernio (singleton). Null se a conta IG ainda não foi conectada. */
+export async function getZernioConnection(): Promise<ZernioConnection | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data } = await client
+    .from('instance_settings')
+    .select('zernio_connection')
+    .limit(1)
+    .maybeSingle();
+  const raw = (data?.zernio_connection ?? null) as Partial<ZernioConnection> | null;
+  if (!raw?.account_id) return null;
+  return {
+    profile_id: raw.profile_id ?? '',
+    account_id: raw.account_id,
+    username: raw.username ?? '',
+    connected_at: raw.connected_at ?? '',
+  };
+}

@@ -11,6 +11,8 @@ import {
   type ImageProviderId,
 } from '@/lib/imageProvider';
 import { getDefaultCta, setDefaultCta, EMPTY_CTA, type DefaultCta } from '@/lib/instanceSettings';
+import { getZernioConnection, type ZernioConnection } from '@/lib/instanceSettings';
+import { getSupabaseClient } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 
 export function CredentialsPanel() {
@@ -60,6 +62,66 @@ export function CredentialsPanel() {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar CTA');
     } finally {
       setSavingCta(false);
+    }
+  }
+
+  // Conexão Zernio (Instagram). connected = conta IG resolvida e salva.
+  const [zernioConn, setZernioConn] = useState<ZernioConnection | null>(null);
+  const [zernioBusy, setZernioBusy] = useState(false);
+
+  async function refreshZernio() {
+    try {
+      setZernioConn(await getZernioConnection());
+    } catch {
+      setZernioConn(null);
+    }
+  }
+
+  // Carrega a conexão e, ao voltar do OAuth (?zernio=connected), sincroniza a conta.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('zernio') === 'connected') {
+      void (async () => {
+        setZernioBusy(true);
+        try {
+          const client = getSupabaseClient();
+          if (client) {
+            const { data, error } = await client.functions.invoke('zernio-sync-account', { body: {} });
+            if (error) throw error;
+            const res = data as { connected?: boolean; username?: string; error?: string };
+            if (res?.connected) toast.success(`Instagram conectado: @${res.username}`);
+            else toast.error(res?.error ?? 'Nao foi possivel conectar a conta.');
+          }
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Erro ao sincronizar conta');
+        } finally {
+          await refreshZernio();
+          window.history.replaceState({}, '', window.location.pathname);
+          setZernioBusy(false);
+        }
+      })();
+    } else {
+      void refreshZernio();
+    }
+  }, []);
+
+  async function connectInstagram() {
+    setZernioBusy(true);
+    try {
+      const client = getSupabaseClient();
+      if (!client) throw new Error('Supabase nao configurado');
+      const redirectUrl = `${window.location.origin}/settings/credentials?zernio=connected`;
+      const { data, error } = await client.functions.invoke('zernio-connect', {
+        body: { redirect_url: redirectUrl },
+      });
+      if (error) throw error;
+      const res = data as { authUrl?: string; error?: string };
+      if (res?.error) throw new Error(res.error);
+      if (!res?.authUrl) throw new Error('Zernio nao retornou a URL de autorizacao.');
+      window.location.href = res.authUrl;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao conectar Instagram');
+      setZernioBusy(false);
     }
   }
 
@@ -172,6 +234,43 @@ export function CredentialsPanel() {
                 <p className="mt-3 text-[11px] text-[#F59E0B]">
                   Configure a chave do Google abaixo para o Nano Banana funcionar.
                 </p>
+              )}
+            </div>
+
+            {/* Instagram (Zernio) — conexão da conta para publicação */}
+            <div className="mb-6 rounded-2xl border border-[rgba(59,130,246,0.12)] bg-[rgba(255,255,255,0.02)] p-5">
+              <h3 className="mb-2 text-[13px] font-medium text-[#CBD5E1]">Instagram (Zernio)</h3>
+              <p className="mb-3 text-[13px] leading-5 text-[#94A3B8]">
+                Conecte uma conta <strong>Business ou Creator</strong> para publicar/agendar carrosseis.
+                Requer a Zernio API Key salva abaixo.
+              </p>
+              {zernioConn?.account_id ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-[rgba(16,185,129,0.25)] bg-[rgba(16,185,129,0.08)] px-3 py-2">
+                  <span className="text-sm text-[#E7E9EA]">
+                    Conectado: <span className="text-[#34D399]">@{zernioConn.username}</span>
+                  </span>
+                  <button
+                    type="button"
+                    disabled={zernioBusy}
+                    onClick={() => void connectInstagram()}
+                    className="text-xs text-[#94A3B8] underline hover:text-white disabled:opacity-60"
+                  >
+                    Reconectar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={zernioBusy || presence.zernio_api_key?.exists === false}
+                  onClick={() => void connectInstagram()}
+                  className="flex h-9 items-center justify-center gap-2 rounded-lg bg-[#3B82F6] px-4 text-sm font-medium text-white transition-colors hover:bg-[#2563EB] disabled:opacity-60"
+                >
+                  {zernioBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Conectar Instagram
+                </button>
+              )}
+              {presence.zernio_api_key?.exists === false && !zernioConn?.account_id && (
+                <p className="mt-2 text-[11px] text-[#F59E0B]">Salve a Zernio API Key abaixo primeiro.</p>
               )}
             </div>
 

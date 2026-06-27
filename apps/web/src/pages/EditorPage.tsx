@@ -13,11 +13,14 @@ import {
   ImagePlus,
   Pencil,
   X,
+  Instagram,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { getSupabaseClient } from '@/lib/supabase';
+import { getZernioConnection, type ZernioConnection } from '@/lib/instanceSettings';
+import { PublishModal } from '@/components/publish/PublishModal';
 import { composeSlideBlobs, zipAndDownload } from '@/lib/export/compose';
 import { measureSlotSize } from '@/lib/render/measureSlot';
 import { getPreset, PRESETS, type Preset, type SlideType, type SlideText, type StyleTokens } from '@/lib/presets';
@@ -59,9 +62,16 @@ export function EditorPage() {
   const [applyAllProgress, setApplyAllProgress] = useState('');
   const [reverting, setReverting] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [zernioConn, setZernioConn] = useState<ZernioConnection | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Nós 1:1 (offscreen) para captura no export.
   const exportRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Conexão Zernio (Instagram) — carregada uma vez para o botão de publicação.
+  useEffect(() => {
+    getZernioConnection().then(setZernioConn).catch(() => setZernioConn(null));
+  }, []);
 
   const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
   const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
@@ -372,6 +382,36 @@ export function EditorPage() {
     }
   }
 
+  // Compõe os slides finais (1:1) e sobe os PNGs ao bucket público; retorna as
+  // URLs públicas na ordem dos slides (consumidas pelo Zernio). Igual à composição
+  // do download, mas devolve URLs em vez de baixar — garante composed_image_url
+  // mesmo sem "Baixar ZIP" antes de publicar.
+  async function composeAndUpload(): Promise<{ position: number; url: string }[]> {
+    const client = getSupabaseClient();
+    if (!client || !id) throw new Error('Supabase nao configurado.');
+    const ordered = [...slides].sort((a, b) => a.position - b.position);
+    const pairs = ordered
+      .map((s) => ({ slide: s, node: exportRefs.current.get(s.id) }))
+      .filter((p): p is { slide: RefineSlide; node: HTMLDivElement } => Boolean(p.node));
+    if (pairs.length === 0) throw new Error('Nada para compor.');
+
+    const blobs = await composeSlideBlobs(pairs.map((p) => p.node));
+    const urls: { position: number; url: string }[] = [];
+    for (let i = 0; i < pairs.length; i += 1) {
+      const p = pairs[i]!;
+      const path = `${id}/${p.slide.id}_composed.png`;
+      const up = await client.storage.from('slide-images').upload(path, blobs[i]!, {
+        contentType: 'image/png',
+        upsert: true,
+      });
+      if (up.error) throw new Error('Falha ao subir a imagem do slide.');
+      const url = client.storage.from('slide-images').getPublicUrl(path).data.publicUrl;
+      await client.from('carousel_slides').update({ composed_image_url: `${url}?t=${Date.now()}` }).eq('id', p.slide.id);
+      urls.push({ position: p.slide.position, url });
+    }
+    return urls;
+  }
+
   if (isMobile) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0A0A0F] p-8">
@@ -431,10 +471,16 @@ export function EditorPage() {
             </select>
           </label>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void handleDownload()} disabled={downloading}>
-          {downloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-          Baixar ZIP
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => void handleDownload()} disabled={downloading}>
+            {downloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            Baixar ZIP
+          </Button>
+          <Button size="sm" onClick={() => setPublishOpen(true)} disabled={slides.length === 0}>
+            <Instagram className="mr-2 h-4 w-4" />
+            Publicar no Instagram
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -622,6 +668,20 @@ export function EditorPage() {
           </div>
         ))}
       </div>
+
+      {publishOpen && id && (
+        <PublishModal
+          carouselId={id}
+          slideCount={slides.length}
+          captionSlides={slides
+            .slice()
+            .sort((a, b) => a.position - b.position)
+            .map((s) => ({ headline: s.text.title, body: s.text.body }))}
+          connection={zernioConn}
+          composeAndUpload={composeAndUpload}
+          onClose={() => setPublishOpen(false)}
+        />
+      )}
     </div>
   );
 }

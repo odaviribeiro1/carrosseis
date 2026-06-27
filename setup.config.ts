@@ -70,5 +70,16 @@ export const setupConfig: SetupConfig = {
       validate: async (value) =>
         validateWithFormat(value, 'apify_api_', 20),
     },
+    {
+      key: 'zernio_api_key',
+      label: 'Zernio API Key',
+      placeholder: 'sk_...',
+      inputType: 'password',
+      optional: true,
+      docsUrl: 'https://zernio.com/dashboard/api-keys',
+      helpText: 'Opcional. Necessaria para publicar/agendar carrosseis no Instagram (via Zernio).',
+      validate: async (value) =>
+        validateWithFormat(value, 'sk_', 67),
+    },
   ],
 };
