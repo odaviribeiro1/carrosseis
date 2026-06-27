@@ -626,7 +626,7 @@ export function EditorPage() {
             {applyAllProgress ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {applyAllProgress}</>
             ) : (
-              <><Layers className="mr-2 h-4 w-4" /> Aplicar imagem em todos</>
+              <><Layers className="mr-2 h-4 w-4" /> Regenerar imagem de todos</>
             )}
           </Button>
 

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { getSupabaseClient } from '@/lib/supabase';
 import type { ZernioConnection } from '@/lib/instanceSettings';
 
-type Mode = 'now' | 'schedule' | 'draft';
+type Mode = 'now' | 'schedule';
 
 interface PublishModalProps {
   carouselId: string;
@@ -84,9 +84,7 @@ export function PublishModal({
       setProgress('Gerando imagens finais...');
       const imageUrls = await composeAndUpload();
 
-      setProgress(
-        mode === 'now' ? 'Publicando...' : mode === 'schedule' ? 'Agendando...' : 'Salvando rascunho...',
-      );
+      setProgress(mode === 'now' ? 'Publicando...' : 'Agendando...');
       const { data, error } = await client.functions.invoke('zernio-publish', {
         body: {
           carousel_id: carouselId,
@@ -111,12 +109,7 @@ export function PublishModal({
         return;
       }
 
-      const label =
-        res?.status === 'published'
-          ? 'Publicado no Instagram!'
-          : res?.status === 'scheduled'
-            ? 'Agendado com sucesso!'
-            : 'Rascunho salvo no Zernio.';
+      const label = res?.status === 'scheduled' ? 'Agendado com sucesso!' : 'Publicado no Instagram!';
       toast.success(label);
       onClose();
     } catch (err) {
@@ -128,7 +121,7 @@ export function PublishModal({
   }
 
   const overLimit = slideCount > 10;
-  const actionLabel = mode === 'now' ? 'Publicar' : mode === 'schedule' ? 'Agendar' : 'Salvar rascunho';
+  const actionLabel = mode === 'now' ? 'Publicar' : 'Agendar';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -193,8 +186,8 @@ export function PublishModal({
             {/* Quando publicar */}
             <div className="space-y-1.5">
               <label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Quando publicar</label>
-              <div className="grid grid-cols-3 gap-2">
-                {([['now', 'Agora'], ['schedule', 'Agendar'], ['draft', 'Rascunho']] as const).map(([m, lbl]) => (
+              <div className="grid grid-cols-2 gap-2">
+                {([['now', 'Agora'], ['schedule', 'Agendar']] as const).map(([m, lbl]) => (
                   <button
                     key={m}
                     type="button"

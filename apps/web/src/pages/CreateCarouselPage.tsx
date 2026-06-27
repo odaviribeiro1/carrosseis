@@ -35,7 +35,7 @@ import { buildSlotPrompt } from '@/lib/ai/buildSlotPrompt';
 import { generateArtDirection } from '@/lib/ai/generateArtDirection';
 import type { ArtDirection } from '@content-hub/shared';
 import { getInstanceImageProvider } from '@/lib/imageProvider';
-import { getDefaultCta, getDefaultSocialProfile, setDefaultSocialProfile } from '@/lib/instanceSettings';
+import { getDefaultCta, setDefaultCta, EMPTY_CTA, type DefaultCta, getDefaultSocialProfile, setDefaultSocialProfile } from '@/lib/instanceSettings';
 import { PRESETS, DEFAULT_PRESET_ID, getPreset, isSocialPreset } from '@/lib/presets';
 import type { SlideType, SlideText } from '@/lib/presets/types';
 import { mergeTokens, brandFontFaces } from '@/lib/presets/mergeTokens';
@@ -252,7 +252,26 @@ export function CreateCarouselPage() {
   const [socialAvatar, setSocialAvatar] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [savingSocialDefault, setSavingSocialDefault] = useState(false);
+  // CTA fixo global (slide final de todo carrossel novo) — editado aqui na config.
+  const [cta, setCta] = useState<DefaultCta>(EMPTY_CTA);
+  const [savingCta, setSavingCta] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    getDefaultCta().then((v) => v && setCta(v)).catch(() => {/* mantem vazio */});
+  }, []);
+
+  async function saveCta() {
+    setSavingCta(true);
+    try {
+      await setDefaultCta(cta);
+      toast.success('CTA fixo atualizado');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar CTA');
+    } finally {
+      setSavingCta(false);
+    }
+  }
   const [visualSettings, setVisualSettings] = useState<VisualSettings>(defaultVisualSettings);
   // Conteudo extraido editavel na tela de Configuracao (origens Instagram/YouTube).
   const [extractedDraft, setExtractedDraft] = useState('');
@@ -1454,6 +1473,50 @@ export function CreateCarouselPage() {
                     </select>
                   </div>
                 )}
+
+                {/* CTA fixo (slide final de todo carrossel novo) — config global da instancia */}
+                <div className="space-y-2 rounded-xl border border-[rgba(59,130,246,0.15)] bg-[rgba(59,130,246,0.03)] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>CTA fixo (slide final)</Label>
+                    <label className="flex items-center gap-2 text-[12px] text-[#94A3B8]">
+                      <input
+                        type="checkbox"
+                        checked={cta.enabled}
+                        onChange={(e) => setCta((p) => ({ ...p, enabled: e.target.checked }))}
+                      />
+                      Ativar
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-[#94A3B8]">
+                    Quando ativo, o ultimo slide de todo carrossel novo usa este CTA (substitui o que a IA geraria).
+                  </p>
+                  <Input
+                    placeholder="Titulo do CTA (ex: Gostou do conteudo?)"
+                    value={cta.title}
+                    onChange={(e) => setCta((p) => ({ ...p, title: e.target.value }))}
+                    disabled={!cta.enabled}
+                  />
+                  <textarea
+                    placeholder="Corpo (ex: Me segue para mais conteudos como este.)"
+                    value={cta.body}
+                    onChange={(e) => setCta((p) => ({ ...p, body: e.target.value }))}
+                    disabled={!cta.enabled}
+                    rows={2}
+                    className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-3 py-2 text-sm text-[#CBD5E1] disabled:opacity-50"
+                  />
+                  <Input
+                    placeholder="Texto do botao (ex: Seguir)"
+                    value={cta.button}
+                    onChange={(e) => setCta((p) => ({ ...p, button: e.target.value }))}
+                    disabled={!cta.enabled}
+                  />
+                  <div className="flex justify-end">
+                    <Button type="button" variant="outline" size="sm" disabled={savingCta} onClick={() => void saveCta()}>
+                      {savingCta ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
+                      Salvar CTA
+                    </Button>
+                  </div>
+                </div>
 
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">
