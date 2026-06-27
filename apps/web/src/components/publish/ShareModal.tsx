@@ -142,7 +142,7 @@ export function ShareModal({ carouselId, captionSlides, composeAndUpload, onClos
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-lg font-bold text-[#F8FAFC]">
-            <Smartphone className="h-5 w-5" /> Publicar com música (manual)
+            <Smartphone className="h-5 w-5" /> Enviar para o celular
           </h2>
           <button type="button" onClick={onClose} className="text-[#94A3B8] hover:text-white">
             <X className="h-5 w-5" />

@@ -481,7 +481,7 @@ export function EditorPage() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} disabled={slides.length === 0}>
             <Smartphone className="mr-2 h-4 w-4" />
-            Enviar pro celular
+            Enviar para o celular
           </Button>
           <Button size="sm" onClick={() => setPublishOpen(true)} disabled={slides.length === 0}>
             <Instagram className="mr-2 h-4 w-4" />
