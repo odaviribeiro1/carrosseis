@@ -6,6 +6,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { RegisterPage } from '@/pages/RegisterPage';
 import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
 import { InvitePage } from '@/pages/InvitePage';
+import { MobileSharePage } from '@/pages/MobileSharePage';
 import { SetupPage } from '@/pages/setup/SetupPage';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -38,6 +39,8 @@ export function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/invite" element={<InvitePage />} />
+            {/* Página pública (sem login) p/ baixar o carrossel no celular via QR */}
+            <Route path="/m/:token" element={<MobileSharePage />} />
 
           {/* Authenticated routes */}
           <Route

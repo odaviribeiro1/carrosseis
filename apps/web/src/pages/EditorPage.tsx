@@ -14,6 +14,7 @@ import {
   Pencil,
   X,
   Instagram,
+  Smartphone,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -21,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { getSupabaseClient } from '@/lib/supabase';
 import { getZernioConnection, type ZernioConnection } from '@/lib/instanceSettings';
 import { PublishModal } from '@/components/publish/PublishModal';
+import { ShareModal } from '@/components/publish/ShareModal';
 import { composeSlideBlobs, zipAndDownload } from '@/lib/export/compose';
 import { measureSlotSize } from '@/lib/render/measureSlot';
 import { getPreset, PRESETS, type Preset, type SlideType, type SlideText, type StyleTokens } from '@/lib/presets';
@@ -63,6 +65,7 @@ export function EditorPage() {
   const [reverting, setReverting] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [zernioConn, setZernioConn] = useState<ZernioConnection | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Nós 1:1 (offscreen) para captura no export.
@@ -476,6 +479,10 @@ export function EditorPage() {
             {downloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
             Baixar ZIP
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} disabled={slides.length === 0}>
+            <Smartphone className="mr-2 h-4 w-4" />
+            Enviar pro celular
+          </Button>
           <Button size="sm" onClick={() => setPublishOpen(true)} disabled={slides.length === 0}>
             <Instagram className="mr-2 h-4 w-4" />
             Publicar no Instagram
@@ -680,6 +687,18 @@ export function EditorPage() {
           connection={zernioConn}
           composeAndUpload={composeAndUpload}
           onClose={() => setPublishOpen(false)}
+        />
+      )}
+
+      {shareOpen && id && (
+        <ShareModal
+          carouselId={id}
+          captionSlides={slides
+            .slice()
+            .sort((a, b) => a.position - b.position)
+            .map((s) => ({ headline: s.text.title, body: s.text.body }))}
+          composeAndUpload={composeAndUpload}
+          onClose={() => setShareOpen(false)}
         />
       )}
     </div>
