@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Palette, Upload, X, ArrowLeft, ArrowRight, Loader2, Save, Bookmark } from 'lucide-react';
+import { Upload, X, ArrowLeft, ArrowRight, Loader2, Save, Bookmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,14 +41,6 @@ interface VisualSettingsStepProps {
   onGenerate: (settings: VisualSettings) => void;
   isGenerating: boolean;
 }
-
-const presetPalettes = [
-  { name: 'Profissional', colors: ['#1E3A5F', '#3B82F6', '#94A3B8', '#F8FAFC', '#0F1223'] },
-  { name: 'Vibrante', colors: ['#FF6B6B', '#FFA94D', '#FFD43B', '#69DB7C', '#9775FA'] },
-  { name: 'Escuro', colors: ['#0F1223', '#1E293B', '#334155', '#475569', '#94A3B8'] },
-  { name: 'Natureza', colors: ['#2D6A4F', '#52B788', '#95D5B2', '#D8F3DC', '#1B4332'] },
-  { name: 'Pastel', colors: ['#F8EDEB', '#FCD5CE', '#F9DCC4', '#E8E8E4', '#D8E2DC'] },
-];
 
 const styleOptions = [
   { value: 'realista', label: 'Realista' },
@@ -135,16 +127,6 @@ export function VisualSettingsStep({ initial, onBack, onGenerate, isGenerating }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao remover preset');
     }
-  }
-
-  function selectPalette(colors: string[]) {
-    updateField('colorPalette', colors);
-  }
-
-  function updatePaletteColor(index: number, color: string) {
-    const newColors = [...settings.colorPalette];
-    newColors[index] = color;
-    updateField('colorPalette', newColors);
   }
 
   const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -269,78 +251,7 @@ export function VisualSettingsStep({ initial, onBack, onGenerate, isGenerating }
           </Select>
         </div>
 
-        {/* Conteudo dos slides: imagens + texto ou apenas texto */}
-        <div className="space-y-2">
-          <Label>Conteudo dos Slides</Label>
-          <div className="flex gap-2">
-            {([
-              { value: 'image_text', label: 'Imagens + Texto' },
-              { value: 'text_only', label: 'Apenas Texto' },
-            ] as const).map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`flex-1 rounded-lg border px-3 py-2 text-center text-xs transition-all ${
-                  settings.slideMode === opt.value
-                    ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.1)] text-[#3B82F6]'
-                    : 'border-[rgba(59,130,246,0.15)] text-[#94A3B8] hover:border-[rgba(59,130,246,0.3)]'
-                }`}
-                onClick={() => updateField('slideMode', opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-[#94A3B8]">
-            {settings.slideMode === 'text_only'
-              ? 'Cada slide tera apenas texto sobre um fundo limpo.'
-              : 'A IA gera, em cada slide, uma imagem relacionada ao conteudo daquele slide junto do texto.'}
-          </p>
-        </div>
 
-        {/* Color Palette */}
-        <div className="space-y-2">
-          <Label>Paleta de Cores</Label>
-          <div className="flex flex-wrap gap-2">
-            {presetPalettes.map((p) => (
-              <button
-                key={p.name}
-                type="button"
-                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-all ${
-                  JSON.stringify(settings.colorPalette) === JSON.stringify(p.colors)
-                    ? 'border-[#3B82F6] bg-[rgba(59,130,246,0.1)] text-[#3B82F6]'
-                    : 'border-[rgba(59,130,246,0.15)] text-[#94A3B8] hover:border-[rgba(59,130,246,0.3)]'
-                }`}
-                onClick={() => selectPalette(p.colors)}
-              >
-                <div className="flex -space-x-1">
-                  {p.colors.map((c, i) => (
-                    <div
-                      key={i}
-                      className="h-4 w-4 rounded-full border border-[rgba(0,0,0,0.2)]"
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-                <span>{p.name}</span>
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <Palette className="h-4 w-4 text-[#94A3B8]" />
-            <span className="text-xs text-[#94A3B8]">Personalizar cores:</span>
-            {settings.colorPalette.map((color, i) => (
-              <div key={i} className="relative">
-                <input
-                  type="color"
-                  value={color}
-                  onChange={(e) => updatePaletteColor(i, e.target.value)}
-                  className="h-7 w-7 cursor-pointer rounded-full border border-[rgba(59,130,246,0.2)] bg-transparent p-0"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
 
         {/* Aspect Ratio */}
         <div className="space-y-2">

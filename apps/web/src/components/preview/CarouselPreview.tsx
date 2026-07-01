@@ -2,6 +2,7 @@ import { Check, RefreshCw, Save, Loader2, Wand2, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useState, useEffect } from 'react';
 import type { SlideContent } from '@/types/carousel';
 import type { Preset } from '@/lib/presets/types';
 import { mergeTokens, brandFontFaces } from '@/lib/presets/mergeTokens';
@@ -64,82 +65,103 @@ export function CarouselPreview({
   const tokens = mergeTokens(preset, brandKit);
   const fonts = brandFontFaces(brandKit);
   const thumbScale = THUMB_W / FRAME_W;
+  const [selectedPosition, setSelectedPosition] = useState(slides[0]?.position ?? 1);
+  const selectedSlide = slides.find((s) => s.position === selectedPosition) ?? slides[0];
+
+  // Atualiza selectedPosition se o slide selecionado for removido
+  useEffect(() => {
+    if (!slides.find((s) => s.position === selectedPosition)) {
+      setSelectedPosition(slides[0]?.position ?? 1);
+    }
+  }, [slides, selectedPosition]);
 
   return (
     <div className="rounded-2xl border border-[rgba(59,130,246,0.12)] bg-[rgba(255,255,255,0.02)] p-6">
       <h2 className="mb-1 text-lg font-bold text-[#F8FAFC]">Preview do Carrossel</h2>
       <p className="mb-5 text-sm text-[#94A3B8]">
         O texto e renderizado pelo template (preset {preset.name}); a imagem de cada slide e gerada
-        ao confirmar. Edite os textos abaixo — sem regerar imagem.
+        ao confirmar. Clique em um slide para editar seu texto — sem regerar imagem.
       </p>
 
-      {/* Grid de slides renderizados ao vivo (texto do preset; slot ainda vazio) */}
+      {/* Grid de slides renderizados ao vivo — clique para selecionar */}
       <div className="mb-6 flex flex-wrap gap-3">
-        {slides.map((slide) => (
-          <div key={slide.position} className="relative">
-            <div className="absolute left-1.5 top-1.5 z-10 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-medium text-white">
-              {typeLabels[slide.type] ?? slide.type}
-            </div>
-            <div className="overflow-hidden rounded-lg border border-[rgba(59,130,246,0.12)]">
-              <SlideRenderer
-                preset={preset}
-                slideType={toSlideType(slide.type)}
-                tokens={tokens}
-                content={{ title: slide.headline, body: slide.body, cta: slide.cta }}
-                accountName={accountName}
-                accountHandle={accountHandle}
-                avatarUrl={avatarUrl}
-                scale={thumbScale}
-                fontFaces={fonts}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Edicao de texto por slide (instantanea, sem regenerar imagem) */}
-      <div className="space-y-3">
-        {slides.map((slide) => (
-          <div
-            key={slide.position}
-            className="space-y-2 rounded-xl border border-[rgba(59,130,246,0.15)] bg-[rgba(59,130,246,0.03)] p-4"
-          >
-            <div className="flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(59,130,246,0.12)] text-xs font-bold text-[#3B82F6]">
-                {slide.position}
-              </span>
-              <span className="text-xs font-medium text-[#94A3B8]">{typeLabels[slide.type] ?? slide.type}</span>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Titulo</Label>
-              <Input
-                value={slide.headline}
-                onChange={(e) => onUpdateSlide?.(slide.position, 'headline', e.target.value)}
-                className="text-sm font-semibold"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Corpo</Label>
-              <textarea
-                value={slide.body}
-                onChange={(e) => onUpdateSlide?.(slide.position, 'body', e.target.value)}
-                rows={2}
-                className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.15)] bg-[rgba(15,18,35,0.5)] px-3 py-2 text-xs text-[#CBD5E1]"
-              />
-            </div>
-            {(slide.type === 'cta' || slide.cta) && (
-              <div className="space-y-1.5">
-                <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">CTA</Label>
-                <Input
-                  value={slide.cta}
-                  onChange={(e) => onUpdateSlide?.(slide.position, 'cta', e.target.value)}
-                  className="text-xs"
+        {slides.map((slide) => {
+          const isSelected = slide.position === selectedPosition;
+          return (
+            <button
+              key={slide.position}
+              type="button"
+              onClick={() => setSelectedPosition(slide.position)}
+              className={`relative cursor-pointer rounded-lg border-2 bg-transparent p-0 text-left transition-all ${
+                isSelected
+                  ? 'border-[#3B82F6] shadow-[0_0_12px_rgba(59,130,246,0.35)]'
+                  : 'border-transparent opacity-70 hover:opacity-100'
+              }`}
+            >
+              <div className="absolute left-1.5 top-1.5 z-10 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-medium text-white">
+                {typeLabels[slide.type] ?? slide.type} {slide.position}
+              </div>
+              <div className="overflow-hidden rounded-[5px]">
+                <SlideRenderer
+                  preset={preset}
+                  slideType={toSlideType(slide.type)}
+                  tokens={tokens}
+                  content={{ title: slide.headline, body: slide.body, cta: slide.cta }}
+                  accountName={accountName}
+                  accountHandle={accountHandle}
+                  avatarUrl={avatarUrl}
+                  scale={thumbScale}
+                  fontFaces={fonts}
                 />
               </div>
-            )}
-          </div>
-        ))}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Edicao de texto do slide selecionado (instantanea, sem regenerar imagem) */}
+      {selectedSlide && (
+        <div className="rounded-xl border border-[rgba(59,130,246,0.15)] bg-[rgba(59,130,246,0.03)] p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#3B82F6] text-xs font-bold text-white">
+              {selectedSlide.position}
+            </span>
+            <span className="text-xs font-medium text-[#94A3B8]">
+              {typeLabels[selectedSlide.type] ?? selectedSlide.type}
+            </span>
+            <span className="ml-auto text-[10px] text-[#94A3B8]">
+              Slide {selectedSlide.position} de {slides.length}
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Titulo</Label>
+            <Input
+              value={selectedSlide.headline}
+              onChange={(e) => onUpdateSlide?.(selectedSlide.position, 'headline', e.target.value)}
+              className="text-sm font-semibold"
+            />
+          </div>
+          <div className="mt-3 space-y-1.5">
+            <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Corpo</Label>
+            <textarea
+              value={selectedSlide.body}
+              onChange={(e) => onUpdateSlide?.(selectedSlide.position, 'body', e.target.value)}
+              rows={3}
+              className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.15)] bg-[rgba(15,18,35,0.5)] px-3 py-2 text-xs text-[#CBD5E1]"
+            />
+          </div>
+          {(selectedSlide.type === 'cta' || selectedSlide.cta) && (
+            <div className="mt-3 space-y-1.5">
+              <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">CTA</Label>
+              <Input
+                value={selectedSlide.cta}
+                onChange={(e) => onUpdateSlide?.(selectedSlide.position, 'cta', e.target.value)}
+                className="text-xs"
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Regerar direcao de arte (estilo das fotos dos slots) */}
       {onRegenerateArtDirection && (
