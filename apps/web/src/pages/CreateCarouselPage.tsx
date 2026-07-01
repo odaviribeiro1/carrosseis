@@ -257,6 +257,8 @@ export function CreateCarouselPage() {
   const [savingSocialPreset, setSavingSocialPreset] = useState(false);
   const [selectedSocialProfileId, setSelectedSocialProfileId] = useState('');
   const [selectedCtaPresetId, setSelectedCtaPresetId] = useState('');
+  const [showSocialPresets, setShowSocialPresets] = useState(false);
+  const [showCtaPresets, setShowCtaPresets] = useState(false);
   // CTA fixo global (slide final de todo carrossel novo) — editado aqui na config.
   const [cta, setCta] = useState<DefaultCta>(EMPTY_CTA);
   const [savingCta, setSavingCta] = useState(false);
@@ -1435,43 +1437,6 @@ export function CreateCarouselPage() {
                   <div className="space-y-3 rounded-xl border border-[rgba(59,130,246,0.15)] bg-[rgba(59,130,246,0.03)] p-3">
                     <Label>Identidade do post (Post do X)</Label>
 
-                    {/* Dropdown de perfis salvos */}
-                    {savedSocialProfiles.length > 0 && (
-                      <div className="flex items-center gap-1">
-                        <select
-                          className="h-9 flex-1 rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-2 text-xs text-[#F8FAFC]"
-                          value={selectedSocialProfileId}
-                          onChange={(e) => {
-                            const id = e.target.value;
-                            setSelectedSocialProfileId(id);
-                            if (!id) return;
-                            const p = savedSocialProfiles.find((sp) => sp.id === id);
-                            if (!p) return;
-                            setSocialName(p.name);
-                            setSocialHandle(p.handle);
-                            setSocialAvatar(p.avatar_url);
-                          }}
-                        >
-                          <option value="">Selecionar predefinicao...</option>
-                          {savedSocialProfiles.map((sp) => (
-                            <option key={sp.id} value={sp.id}>
-                              {sp.name || sp.handle}
-                            </option>
-                          ))}
-                        </select>
-                        {selectedSocialProfileId && (
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteSocialProfile(selectedSocialProfileId)}
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[#EF4444] transition-colors hover:bg-[rgba(239,68,68,0.1)]"
-                            title="Excluir predefinicao"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    )}
-
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
@@ -1509,7 +1474,7 @@ export function CreateCarouselPage() {
                       onChange={(e) => void handleAvatarUpload(e.target.files?.[0])}
                     />
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
                         variant="outline"
@@ -1527,7 +1492,7 @@ export function CreateCarouselPage() {
                       </Button>
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         className="h-7 text-xs"
                         disabled={savingSocialDefault || uploadingAvatar}
@@ -1540,7 +1505,56 @@ export function CreateCarouselPage() {
                         )}
                         Salvar como padrao
                       </Button>
+                      {savedSocialProfiles.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setShowSocialPresets(!showSocialPresets)}
+                        >
+                          Selecionar predefinicao
+                        </Button>
+                      )}
                     </div>
+
+                    {/* Dropdown condicional de perfis salvos */}
+                    {showSocialPresets && savedSocialProfiles.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        <select
+                          className="h-9 flex-1 rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-2 text-xs text-[#F8FAFC]"
+                          value={selectedSocialProfileId}
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            setSelectedSocialProfileId(id);
+                            if (!id) return;
+                            const p = savedSocialProfiles.find((sp) => sp.id === id);
+                            if (!p) return;
+                            setSocialName(p.name);
+                            setSocialHandle(p.handle);
+                            setSocialAvatar(p.avatar_url);
+                          }}
+                        >
+                          <option value="">Selecionar predefinicao...</option>
+                          {savedSocialProfiles.map((sp) => (
+                            <option key={sp.id} value={sp.id}>
+                              {sp.name || sp.handle}
+                            </option>
+                          ))}
+                        </select>
+                        {selectedSocialProfileId && (
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteSocialProfile(selectedSocialProfileId)}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[#EF4444] transition-colors hover:bg-[rgba(239,68,68,0.1)]"
+                            title="Excluir predefinicao"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     <p className="text-[10px] text-[#94A3B8]">
                       Aparece no topo de cada slide (avatar, nome, selo azul e @). Salve predefinicoes para reutilizar em outros carrosseis.
                     </p>
@@ -1598,8 +1612,55 @@ export function CreateCarouselPage() {
                     Quando ativo, o ultimo slide de todo carrossel novo usa este CTA (substitui o que a IA geraria).
                   </p>
 
-                  {/* Dropdown de predefinicoes de CTA */}
-                  {ctaPresets.length > 0 && (
+                  <Input
+                    placeholder="Titulo do CTA (ex: Gostou do conteudo?)"
+                    value={cta.title}
+                    onChange={(e) => setCta((p) => ({ ...p, title: e.target.value }))}
+                    disabled={!cta.enabled}
+                  />
+                  <textarea
+                    placeholder="Corpo (ex: Me segue para mais conteudos como este.)"
+                    value={cta.body}
+                    onChange={(e) => setCta((p) => ({ ...p, body: e.target.value }))}
+                    disabled={!cta.enabled}
+                    rows={2}
+                    className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-3 py-2 text-sm text-[#CBD5E1] disabled:opacity-50"
+                  />
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!cta.enabled || savingCtaPreset}
+                      onClick={handleSaveCtaPreset}
+                    >
+                      {savingCtaPreset ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <Save className="mr-1 h-3 w-3" />
+                      )}
+                      Salvar predefinicao
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" disabled={savingCta} onClick={() => void saveCta()}>
+                      {savingCta ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
+                      Salvar CTA
+                    </Button>
+                    {ctaPresets.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!cta.enabled}
+                        onClick={() => setShowCtaPresets(!showCtaPresets)}
+                      >
+                        Selecionar predefinicao
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Dropdown condicional de predefinicoes de CTA */}
+                  {showCtaPresets && ctaPresets.length > 0 && (
                     <div className="flex items-center gap-1">
                       <select
                         className="h-9 flex-1 rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-2 text-xs text-[#F8FAFC] disabled:opacity-50"
@@ -1633,42 +1694,6 @@ export function CreateCarouselPage() {
                       )}
                     </div>
                   )}
-
-                  <Input
-                    placeholder="Titulo do CTA (ex: Gostou do conteudo?)"
-                    value={cta.title}
-                    onChange={(e) => setCta((p) => ({ ...p, title: e.target.value }))}
-                    disabled={!cta.enabled}
-                  />
-                  <textarea
-                    placeholder="Corpo (ex: Me segue para mais conteudos como este.)"
-                    value={cta.body}
-                    onChange={(e) => setCta((p) => ({ ...p, body: e.target.value }))}
-                    disabled={!cta.enabled}
-                    rows={2}
-                    className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.2)] bg-[#0A0A0F] px-3 py-2 text-sm text-[#CBD5E1] disabled:opacity-50"
-                  />
-
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={!cta.enabled || savingCtaPreset}
-                      onClick={handleSaveCtaPreset}
-                    >
-                      {savingCtaPreset ? (
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                      ) : (
-                        <Save className="mr-1 h-3 w-3" />
-                      )}
-                      Salvar predefinicao
-                    </Button>
-                    <Button type="button" variant="outline" size="sm" disabled={savingCta} onClick={() => void saveCta()}>
-                      {savingCta ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
-                      Salvar CTA
-                    </Button>
-                  </div>
                 </div>
 
                 <div className="flex gap-2">
