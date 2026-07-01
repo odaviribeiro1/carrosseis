@@ -19,6 +19,8 @@ import {
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { getSupabaseClient } from '@/lib/supabase';
 import { getZernioConnection, type ZernioConnection } from '@/lib/instanceSettings';
 import { PublishModal } from '@/components/publish/PublishModal';
@@ -211,6 +213,14 @@ export function EditorPage() {
         s.id === slideId
           ? { ...s, slotImageUrl: `${imageUrl}?v=${version}`, currentVersion: version, imagePrompt: prompt }
           : s,
+      ),
+    );
+  }
+
+  function updateSlideText(slideId: string, field: keyof SlideText, value: string) {
+    setSlides((prev) =>
+      prev.map((s) =>
+        s.id === slideId ? { ...s, text: { ...s.text, [field]: value } } : s,
       ),
     );
   }
@@ -581,7 +591,7 @@ export function EditorPage() {
           <div>
             <h2 className="text-sm font-semibold text-[#F8FAFC]">Refinar slide {active?.position ?? ''}</h2>
             <p className="mt-1 text-xs text-[#94A3B8]">
-              Descreva o ajuste da imagem (foto do slot). O texto e do template e nao muda aqui.
+              Edite o texto do slide ou descreva o ajuste da imagem (foto do slot).
             </p>
           </div>
 
@@ -646,6 +656,38 @@ export function EditorPage() {
           </Button>
 
           {active && <p className="text-[10px] text-[#94A3B8]/70">Versao atual: v{active.currentVersion}</p>}
+
+          {/* Edicao de texto do slide ativo */}
+          {active && (
+            <div className="space-y-3 rounded-xl border border-[rgba(59,130,246,0.15)] bg-[rgba(59,130,246,0.03)] p-3">
+              <h3 className="text-xs font-semibold text-[#F8FAFC]">Texto do Slide</h3>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Titulo</Label>
+                <Input
+                  value={active.text.title}
+                  onChange={(e) => updateSlideText(active.id, 'title', e.target.value)}
+                  className="text-sm font-semibold"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Corpo</Label>
+                <textarea
+                  value={active.text.body}
+                  onChange={(e) => updateSlideText(active.id, 'body', e.target.value)}
+                  rows={3}
+                  className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.15)] bg-[rgba(15,18,35,0.5)] px-3 py-2 text-xs text-[#CBD5E1]"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">CTA</Label>
+                <Input
+                  value={active.text.cta}
+                  onChange={(e) => updateSlideText(active.id, 'cta', e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
