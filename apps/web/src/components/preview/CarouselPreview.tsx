@@ -1,4 +1,4 @@
-import { Check, RefreshCw, Save, Loader2, Wand2, ArrowLeft } from 'lucide-react';
+import { Check, RefreshCw, Save, Loader2, Wand2, ArrowLeft, FileCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -75,6 +75,37 @@ export function CarouselPreview({
     }
   }, [slides, selectedPosition]);
 
+  const [localHeadline, setLocalHeadline] = useState('');
+  const [localBody, setLocalBody] = useState('');
+  const [localCta, setLocalCta] = useState('');
+  const [savedAt, setSavedAt] = useState<number>(0);
+
+  useEffect(() => {
+    if (selectedSlide) {
+      setLocalHeadline(selectedSlide.headline);
+      setLocalBody(selectedSlide.body);
+      setLocalCta(selectedSlide.cta ?? '');
+    }
+  }, [selectedPosition, slides]);
+
+  const hasChanges = selectedSlide && (
+    localHeadline !== selectedSlide.headline ||
+    localBody !== selectedSlide.body ||
+    localCta !== (selectedSlide.cta ?? '')
+  );
+
+  const justSaved = Date.now() - savedAt < 2000;
+
+  function handleSaveText() {
+    if (!selectedSlide || !onUpdateSlide) return;
+    onUpdateSlide(selectedSlide.position, 'headline', localHeadline);
+    onUpdateSlide(selectedSlide.position, 'body', localBody);
+    if (selectedSlide.cta !== undefined) {
+      onUpdateSlide(selectedSlide.position, 'cta', localCta);
+    }
+    setSavedAt(Date.now());
+  }
+
   return (
     <div className="rounded-2xl border border-[rgba(59,130,246,0.12)] bg-[rgba(255,255,255,0.02)] p-6">
       <h2 className="mb-1 text-lg font-bold text-[#F8FAFC]">Preview do Carrossel</h2>
@@ -136,16 +167,16 @@ export function CarouselPreview({
           <div className="space-y-1.5">
             <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Titulo</Label>
             <Input
-              value={selectedSlide.headline}
-              onChange={(e) => onUpdateSlide?.(selectedSlide.position, 'headline', e.target.value)}
+              value={localHeadline}
+              onChange={(e) => setLocalHeadline(e.target.value)}
               className="text-sm font-semibold"
             />
           </div>
           <div className="mt-3 space-y-1.5">
             <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Corpo</Label>
             <textarea
-              value={selectedSlide.body}
-              onChange={(e) => onUpdateSlide?.(selectedSlide.position, 'body', e.target.value)}
+              value={localBody}
+              onChange={(e) => setLocalBody(e.target.value)}
               rows={3}
               className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.15)] bg-[rgba(15,18,35,0.5)] px-3 py-2 text-xs text-[#CBD5E1]"
             />
@@ -154,12 +185,27 @@ export function CarouselPreview({
             <div className="mt-3 space-y-1.5">
               <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">CTA</Label>
               <Input
-                value={selectedSlide.cta}
-                onChange={(e) => onUpdateSlide?.(selectedSlide.position, 'cta', e.target.value)}
+                value={localCta}
+                onChange={(e) => setLocalCta(e.target.value)}
                 className="text-xs"
               />
             </div>
           )}
+          <div className="mt-4 flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 px-3 text-xs"
+              disabled={!hasChanges || busy}
+              onClick={handleSaveText}
+            >
+              {justSaved ? <FileCheck className="mr-1 h-3.5 w-3.5" /> : <Save className="mr-1 h-3.5 w-3.5" />}
+              {justSaved ? 'Salvo' : 'Salvar alteracoes'}
+            </Button>
+            {hasChanges && (
+              <span className="text-[10px] text-amber-400">Alteracoes nao salvas</span>
+            )}
+          </div>
         </div>
       )}
 
