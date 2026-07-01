@@ -15,6 +15,8 @@ import {
   X,
   Instagram,
   Smartphone,
+  Save,
+  FileCheck,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -311,6 +313,48 @@ export function EditorPage() {
     } finally {
       setReverting(false);
     }
+  }
+
+  // Estado local para edicao de texto com salvamento explicito
+  const [localTitle, setLocalTitle] = useState('');
+  const [localBody, setLocalBody] = useState('');
+  const [localCta, setLocalCta] = useState('');
+  const [textSavedAt, setTextSavedAt] = useState(0);
+
+  useEffect(() => {
+    if (active) {
+      setLocalTitle(active.text.title ?? '');
+      setLocalBody(active.text.body ?? '');
+      setLocalCta(active.text.cta ?? '');
+    }
+  }, [activeIndex, slides]);
+
+  const textHasChanges = active && (
+    localTitle !== (active.text.title ?? '') ||
+    localBody !== (active.text.body ?? '') ||
+    localCta !== (active.text.cta ?? '')
+  );
+
+  const textJustSaved = Date.now() - textSavedAt < 2000;
+
+  async function handleSaveText() {
+    if (!active || !textHasChanges) return;
+    updateSlideText(active.id, 'title', localTitle);
+    updateSlideText(active.id, 'body', localBody);
+    updateSlideText(active.id, 'cta', localCta);
+    const client = getSupabaseClient();
+    if (client) {
+      const { error } = await client
+        .from('carousel_slides')
+        .update({ text_content: { title: localTitle, body: localBody, cta: localCta } })
+        .eq('id', active.id);
+      if (error) {
+        toast.error('Erro ao salvar texto');
+        return;
+      }
+    }
+    setTextSavedAt(Date.now());
+    toast.success('Texto salvo');
   }
 
   async function reorder(index: number, dir: -1 | 1) {
@@ -664,16 +708,16 @@ export function EditorPage() {
               <div className="space-y-1.5">
                 <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Titulo</Label>
                 <Input
-                  value={active.text.title}
-                  onChange={(e) => updateSlideText(active.id, 'title', e.target.value)}
+                  value={localTitle}
+                  onChange={(e) => setLocalTitle(e.target.value)}
                   className="text-sm font-semibold"
                 />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">Corpo</Label>
                 <textarea
-                  value={active.text.body}
-                  onChange={(e) => updateSlideText(active.id, 'body', e.target.value)}
+                  value={localBody}
+                  onChange={(e) => setLocalBody(e.target.value)}
                   rows={3}
                   className="flex w-full resize-none rounded-md border border-[rgba(59,130,246,0.15)] bg-[rgba(15,18,35,0.5)] px-3 py-2 text-xs text-[#CBD5E1]"
                 />
@@ -681,10 +725,25 @@ export function EditorPage() {
               <div className="space-y-1.5">
                 <Label className="text-[10px] uppercase tracking-wider text-[#94A3B8]">CTA</Label>
                 <Input
-                  value={active.text.cta}
-                  onChange={(e) => updateSlideText(active.id, 'cta', e.target.value)}
+                  value={localCta}
+                  onChange={(e) => setLocalCta(e.target.value)}
                   className="text-xs"
                 />
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 px-3 text-xs"
+                  disabled={!textHasChanges || busy}
+                  onClick={() => void handleSaveText()}
+                >
+                  {textJustSaved ? <FileCheck className="mr-1 h-3.5 w-3.5" /> : <Save className="mr-1 h-3.5 w-3.5" />}
+                  {textJustSaved ? 'Salvo' : 'Salvar alteracoes'}
+                </Button>
+                {textHasChanges && (
+                  <span className="text-[10px] text-amber-400">Alteracoes nao salvas</span>
+                )}
               </div>
             </div>
           )}
