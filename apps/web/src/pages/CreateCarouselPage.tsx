@@ -36,7 +36,7 @@ import { buildSlotPrompt } from '@/lib/ai/buildSlotPrompt';
 import { generateArtDirection } from '@/lib/ai/generateArtDirection';
 import type { ArtDirection } from '@content-hub/shared';
 import { getInstanceImageProvider } from '@/lib/imageProvider';
-import { getDefaultCta, setDefaultCta, EMPTY_CTA, type DefaultCta, getDefaultSocialProfile, setDefaultSocialProfile, listCtaPresets, saveCtaPreset, deleteCtaPreset, type CtaPreset, listSavedSocialProfiles, saveSocialProfile, deleteSocialProfile, type SavedSocialProfile } from '@/lib/instanceSettings';
+import { getDefaultCta, EMPTY_CTA, type DefaultCta, getDefaultSocialProfile, listCtaPresets, saveCtaPreset, deleteCtaPreset, type CtaPreset, listSavedSocialProfiles, saveSocialProfile, deleteSocialProfile, type SavedSocialProfile } from '@/lib/instanceSettings';
 import { PRESETS, DEFAULT_PRESET_ID, getPreset, isSocialPreset } from '@/lib/presets';
 import type { SlideType, SlideText } from '@/lib/presets/types';
 import { mergeTokens, brandFontFaces } from '@/lib/presets/mergeTokens';
@@ -252,7 +252,6 @@ export function CreateCarouselPage() {
   const [socialHandle, setSocialHandle] = useState('');
   const [socialAvatar, setSocialAvatar] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [savingSocialDefault, setSavingSocialDefault] = useState(false);
   const [savedSocialProfiles, setSavedSocialProfiles] = useState<SavedSocialProfile[]>([]);
   const [savingSocialPreset, setSavingSocialPreset] = useState(false);
   const [selectedSocialProfileId, setSelectedSocialProfileId] = useState('');
@@ -261,7 +260,6 @@ export function CreateCarouselPage() {
   const [showCtaPresets, setShowCtaPresets] = useState(false);
   // CTA fixo global (slide final de todo carrossel novo) — editado aqui na config.
   const [cta, setCta] = useState<DefaultCta>(EMPTY_CTA);
-  const [savingCta, setSavingCta] = useState(false);
   const [ctaPresets, setCtaPresets] = useState<CtaPreset[]>([]);
   const [savingCtaPreset, setSavingCtaPreset] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -273,18 +271,6 @@ export function CreateCarouselPage() {
   useEffect(() => {
     listCtaPresets().then(setCtaPresets).catch(() => setCtaPresets([]));
   }, []);
-
-  async function saveCta() {
-    setSavingCta(true);
-    try {
-      await setDefaultCta(cta);
-      toast.success('CTA fixo atualizado');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao salvar CTA');
-    } finally {
-      setSavingCta(false);
-    }
-  }
 
   async function handleSaveCtaPreset() {
     const title = cta.title.trim();
@@ -427,24 +413,6 @@ export function CreateCarouselPage() {
   useEffect(() => {
     listSavedSocialProfiles().then(setSavedSocialProfiles).catch(() => setSavedSocialProfiles([]));
   }, []);
-
-  // Salva a identidade do post atual como padrão da instância (singleton).
-  async function handleSaveSocialDefault() {
-    setSavingSocialDefault(true);
-    try {
-      await setDefaultSocialProfile({
-        name: socialName.trim(),
-        handle: socialHandle.trim(),
-        avatar_url: socialAvatar,
-      });
-      toast.success('Identidade salva como padrao');
-    } catch (err) {
-      console.error(err);
-      toast.error('Nao foi possivel salvar (apenas o owner pode definir o padrao)');
-    } finally {
-      setSavingSocialDefault(false);
-    }
-  }
 
   async function handleSaveSocialPreset() {
     if (!socialName.trim() && !socialHandle.trim()) {
@@ -1490,21 +1458,6 @@ export function CreateCarouselPage() {
                         )}
                         Salvar predefinicao
                       </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        disabled={savingSocialDefault || uploadingAvatar}
-                        onClick={handleSaveSocialDefault}
-                      >
-                        {savingSocialDefault ? (
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        ) : (
-                          <Save className="mr-1 h-3 w-3" />
-                        )}
-                        Salvar como padrao
-                      </Button>
                       {savedSocialProfiles.length > 0 && (
                         <Button
                           type="button"
@@ -1641,10 +1594,6 @@ export function CreateCarouselPage() {
                         <Save className="mr-1 h-3 w-3" />
                       )}
                       Salvar predefinicao
-                    </Button>
-                    <Button type="button" variant="outline" size="sm" disabled={savingCta} onClick={() => void saveCta()}>
-                      {savingCta ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
-                      Salvar CTA
                     </Button>
                     {ctaPresets.length > 0 && (
                       <Button
