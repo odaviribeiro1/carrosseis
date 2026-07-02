@@ -495,6 +495,9 @@ export function EditorPage() {
   const thumbScale = THUMB_W / FRAME_W;
   const CENTER_W = 480;
   const centerScale = CENTER_W / FRAME_W;
+  const liveText: SlideText = active
+    ? { title: localTitle, body: localBody, cta: localCta }
+    : { title: '', body: '', cta: '' };
 
   return (
     <div className="flex h-screen flex-col bg-[#0A0A0F]">
@@ -559,7 +562,7 @@ export function EditorPage() {
                 preset={preset}
                 slideType={slide.slideType}
                 tokens={tokens}
-                content={slide.text}
+                content={i === activeIndex ? liveText : slide.text}
                 slotImageUrl={slide.slotImageUrl}
                 accountName={social?.name}
                 accountHandle={social?.handle}
@@ -609,7 +612,7 @@ export function EditorPage() {
                 preset={preset}
                 slideType={active.slideType}
                 tokens={tokens}
-                content={active.text}
+                content={liveText}
                 slotImageUrl={active.slotImageUrl}
                 accountName={social?.name}
                 accountHandle={social?.handle}
